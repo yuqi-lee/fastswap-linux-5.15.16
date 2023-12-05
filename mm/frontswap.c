@@ -267,8 +267,8 @@ int __frontswap_store(struct page *page)
 	 */
 	if (__frontswap_test(sis, offset)) {
 		__frontswap_clear(sis, offset);
-		// for_each_frontswap_ops(ops)
-		// 	ops->invalidate_page(type, offset);
+		for_each_frontswap_ops(ops)
+			ops->invalidate_page(type, offset);
 	}
 
 	/* Try to store in each implementation, until one succeeds. */
@@ -382,7 +382,7 @@ EXPORT_SYMBOL(__frontswap_poll_load);
 void __frontswap_invalidate_page(unsigned type, pgoff_t offset)
 {
 	struct swap_info_struct *sis = swap_info[type];
-	// struct frontswap_ops *ops;
+	struct frontswap_ops *ops;
 
 	VM_BUG_ON(!frontswap_ops);
 	VM_BUG_ON(sis == NULL);
@@ -390,8 +390,8 @@ void __frontswap_invalidate_page(unsigned type, pgoff_t offset)
 	if (!__frontswap_test(sis, offset))
 		return;
 
-	// for_each_frontswap_ops(ops)
-	// 	ops->invalidate_page(type, offset);
+	for_each_frontswap_ops(ops)
+	 	ops->invalidate_page(type, offset);
 	__frontswap_clear(sis, offset);
 	inc_frontswap_invalidates();
 }
