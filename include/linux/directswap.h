@@ -8,7 +8,7 @@
 #include <linux/swap.h>
 #include <linux/atomic.h>
 
-extern bool __direct_swap_enabled = false;
+extern bool __direct_swap_enabled;
 
 static inline bool direct_swap_enabled(void)
 {

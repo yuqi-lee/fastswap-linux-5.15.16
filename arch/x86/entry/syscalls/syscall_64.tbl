@@ -370,7 +370,7 @@
 446	common	landlock_restrict_self	sys_landlock_restrict_self
 447	common	memfd_secret		sys_memfd_secret
 448	common	process_mrelease	sys_process_mrelease
-461 common  set_direct_swap_enabled sys_set_direct_swap_enabled
+449 common  set_direct_swap_enabled sys_set_direct_swap_enabled
 
 #
 # Due to a historical design error, certain syscalls are numbered differently
