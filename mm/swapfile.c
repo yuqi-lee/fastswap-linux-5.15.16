@@ -44,6 +44,7 @@
 #include <asm/tlbflush.h>
 #include <linux/swapops.h>
 #include <linux/swap_cgroup.h>
+#include <linux/direct_swap.h>
 
 static bool swap_count_continued(struct swap_info_struct *, pgoff_t,
 				 unsigned char);
@@ -1036,6 +1037,10 @@ static void swap_free_cluster(struct swap_info_struct *si, unsigned long idx)
 	swap_range_free(si, offset, SWAPFILE_CLUSTER);
 }
 
+static int alloc_remote_pages(int n_goal, unsigned long entry_size, swp_entry_t swp_entries[]) {
+ 	return 0;
+ }
+
 int get_swap_pages(int n_goal, swp_entry_t swp_entries[], int entry_size)
 {
 	unsigned long size = swap_entry_size(entry_size);
@@ -1046,6 +1051,16 @@ int get_swap_pages(int n_goal, swp_entry_t swp_entries[], int entry_size)
 
 	/* Only single cluster request supported */
 	WARN_ON_ONCE(n_goal > 1 && size == SWAPFILE_CLUSTER);
+
+	/*
+ 	* [DirectSwap] Alloc remote pages as swap pages.
+ 	*/
+ 	if(direct_swap_enabled()) {
+ 		n_ret = alloc_remote_pages(n_goal, size, swap_entries);
+ 		if(likely(n_ret)) {
+ 			goto check_out;
+ 		}
+ 	}
 
 	spin_lock(&swap_avail_lock);
 
