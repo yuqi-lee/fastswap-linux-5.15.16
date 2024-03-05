@@ -42,7 +42,7 @@
 #include <linux/version.h>
 #include <linux/ctype.h>
 #include <linux/syscall_user_dispatch.h>
-#include <linux/direct_swap.h>
+
 
 #include <linux/compat.h>
 #include <linux/syscalls.h>
@@ -2628,13 +2628,6 @@ SYSCALL_DEFINE1(sysinfo, struct sysinfo __user *, info)
 		return -EFAULT;
 
 	return 0;
-}
-
-SYSCALL_DEFINE1(set_direct_swap_enabled, int, enable)
-{
- 	set_direct_swap_enabled(enable);
-    printk("DirectSwap enable: %s\n", enable ? "enabled" : "disabled");
- 	return 0;
 }
 
 #ifdef CONFIG_COMPAT

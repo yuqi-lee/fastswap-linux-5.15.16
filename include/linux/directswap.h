@@ -1,9 +1,9 @@
 /*
-* [DirectSwap] swap_stats.h - collect swap stats
+* [DirectSwap] directswap.h 
 */
 
-#ifndef _LINUX_SWAP_STATS_H
-#define _LINUX_SWAP_STATS_H
+#ifndef _LINUX_DIRECTSWAP_H
+#define _LINUX_DIRECTSWAP_H
 
 #include <linux/swap.h>
 #include <linux/atomic.h>
@@ -19,3 +19,5 @@ static inline void set_direct_swap_enabled(bool value)
 {
     __direct_swap_enabled = value;
 }
+
+#endif /* _LINUX_DIRECTSWAP_H */
