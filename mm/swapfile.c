@@ -1037,9 +1037,7 @@ static void swap_free_cluster(struct swap_info_struct *si, unsigned long idx)
 	swap_range_free(si, offset, SWAPFILE_CLUSTER);
 }
 
-static int alloc_remote_pages(int n_goal, unsigned long entry_size, swp_entry_t swp_entries[]) {
- 	return 0;
- }
+
 
 int get_swap_pages(int n_goal, swp_entry_t swp_entries[], int entry_size)
 {
@@ -1056,7 +1054,7 @@ int get_swap_pages(int n_goal, swp_entry_t swp_entries[], int entry_size)
  	* [DirectSwap] Alloc remote pages as swap pages.
  	*/
  	if(direct_swap_enabled()) {
- 		n_ret = alloc_remote_pages(n_goal, size, swap_entries);
+ 		n_ret = direct_swap_alloc_remote_pages(n_goal, size, swp_entries);
  		if(likely(n_ret)) {
  			goto check_out;
  		}
@@ -1351,10 +1349,15 @@ static void swap_entry_free(struct swap_info_struct *p, swp_entry_t entry)
 void swap_free(swp_entry_t entry)
 {
 	struct swap_info_struct *p;
+	//int ret;
 
 	p = _swap_info_get(entry);
-	if (p)
+	if (p) {
+		if(direct_swap_enabled() && !direct_swap_free_remote_page(entry)) {
+			return;
+		}
 		__swap_entry_free(p, entry);
+	}
 }
 
 /*
