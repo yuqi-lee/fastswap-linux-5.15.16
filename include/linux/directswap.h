@@ -26,8 +26,11 @@ typedef struct {
     unsigned long val;
 } remote_address_t;
 
-DEFINE_KFIFO(kfifos_alloc[NUM_KFIFOS_ALLOC], swp_entry_t, PAGES_PER_KFIFO_ALLOC);
-DEFINE_KFIFO(kfifos_free[NUM_KFIFOS_FREE], swp_entry_t, PAGES_PER_KFIFO_FREE);
+static struct kfifo kfifos_alloc[NUM_KFIFOS_ALLOC];
+static struct kfifo kfifos_free[NUM_KFIFOS_FREE];
+
+//DEFINE_KFIFO(kfifos_alloc[NUM_KFIFOS_ALLOC], swp_entry_t, PAGES_PER_KFIFO_ALLOC);
+//DEFINE_KFIFO(kfifos_free[NUM_KFIFOS_FREE], swp_entry_t, PAGES_PER_KFIFO_FREE);
 
 static inline bool direct_swap_enabled(void)
 {
