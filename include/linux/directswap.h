@@ -37,4 +37,9 @@ static inline bool direct_swap_enabled(void)
     return __direct_swap_enabled;
 }
 
+static inline bool is_direct_swap_area(int type)
+{
+    return type >= MAX_SWAPFILES - NUM_REMOTE_SWAP_AREA;
+}
+
 #endif /* _LINUX_DIRECTSWAP_H */
