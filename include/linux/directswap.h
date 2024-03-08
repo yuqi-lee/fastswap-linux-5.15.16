@@ -42,4 +42,9 @@ static inline bool is_direct_swap_area(int type)
     return type >= MAX_SWAPFILES - NUM_REMOTE_SWAP_AREA;
 }
 
+static inline int remote_area_id(int type)
+{
+    return MAX_SWAPFILES - NUM_REMOTE_SWAP_AREA - type;
+}
+
 #endif /* _LINUX_DIRECTSWAP_H */
