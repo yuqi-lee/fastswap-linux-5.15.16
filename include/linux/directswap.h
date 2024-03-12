@@ -18,6 +18,9 @@
 
 extern bool __direct_swap_enabled;
 
+extern struct kfifo kfifos_alloc[NUM_KFIFOS_ALLOC];
+extern struct kfifo kfifos_free[NUM_KFIFOS_FREE];
+
 int direct_swap_alloc_remote_pages(int n_goal, unsigned long entry_size, swp_entry_t swp_entries[]);
 int direct_swap_free_remote_page(swp_entry_t entry);
 
@@ -26,8 +29,6 @@ typedef struct {
     unsigned long val;
 } remote_address_t;
 
-static struct kfifo kfifos_alloc[NUM_KFIFOS_ALLOC];
-static struct kfifo kfifos_free[NUM_KFIFOS_FREE];
 
 //DEFINE_KFIFO(kfifos_alloc[NUM_KFIFOS_ALLOC], swp_entry_t, PAGES_PER_KFIFO_ALLOC);
 //DEFINE_KFIFO(kfifos_free[NUM_KFIFOS_FREE], swp_entry_t, PAGES_PER_KFIFO_FREE);

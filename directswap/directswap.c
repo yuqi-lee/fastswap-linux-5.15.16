@@ -11,6 +11,10 @@
 bool __direct_swap_enabled = false;
 EXPORT_SYMBOL(__direct_swap_enabled);
 
+struct kfifo kfifos_alloc[NUM_KFIFOS_ALLOC];
+EXPORT_SYMBOL(kfifos_alloc);
+struct kfifo kfifos_free[NUM_KFIFOS_FREE];
+EXPORT_SYMBOL(kfifos_free);
 
 SYSCALL_DEFINE1(set_direct_swap_enabled, int, enable)
 {
