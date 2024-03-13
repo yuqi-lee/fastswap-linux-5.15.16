@@ -33,6 +33,7 @@
 #include <linux/vmalloc.h>
 #include <linux/mutex.h>
 #include <linux/mm.h>
+#include <linux/swapops.h>
 
 static DEFINE_PER_CPU(struct swap_slots_cache, swp_slots);
 static bool	swap_slot_cache_active;

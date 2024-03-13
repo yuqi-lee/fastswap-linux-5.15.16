@@ -71,3 +71,13 @@ int direct_swap_free_remote_page(swp_entry_t entry) {
 		return 0;
 	}
 }
+
+inline bool is_direct_swap_area(int type)
+{
+    return type >= MAX_SWAPFILES - NUM_REMOTE_SWAP_AREA;
+}
+
+inline int remote_area_id(int type)
+{
+    return MAX_SWAPFILES - NUM_REMOTE_SWAP_AREA - type;
+}

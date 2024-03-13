@@ -9,6 +9,7 @@
 #include <linux/atomic.h>
 #include <linux/kfifo.h>
 
+
 #define NUM_REMOTE_SWAP_AREA 1
 
 #define NUM_KFIFOS_ALLOC 64
@@ -20,6 +21,8 @@ extern bool __direct_swap_enabled;
 
 extern struct kfifo kfifos_alloc[NUM_KFIFOS_ALLOC];
 extern struct kfifo kfifos_free[NUM_KFIFOS_FREE];
+extern inline bool is_direct_swap_area(int type);
+extern inline int remote_area_id(int type);
 
 int direct_swap_alloc_remote_pages(int n_goal, unsigned long entry_size, swp_entry_t swp_entries[]);
 int direct_swap_free_remote_page(swp_entry_t entry);
@@ -36,16 +39,6 @@ typedef struct {
 static inline bool direct_swap_enabled(void)
 {
     return __direct_swap_enabled;
-}
-
-static inline bool is_direct_swap_area(int type)
-{
-    return type >= MAX_SWAPFILES - NUM_REMOTE_SWAP_AREA;
-}
-
-static inline int remote_area_id(int type)
-{
-    return MAX_SWAPFILES - NUM_REMOTE_SWAP_AREA - type;
 }
 
 #endif /* _LINUX_DIRECTSWAP_H */
