@@ -15,6 +15,7 @@
 #include <linux/page-flags.h>
 #include <uapi/linux/mempolicy.h>
 #include <asm/page.h>
+#include <linux/directswap.h>
 
 struct notifier_block;
 
@@ -739,7 +740,7 @@ extern void mem_cgroup_swapout(struct page *page, swp_entry_t entry);
 extern int __mem_cgroup_try_charge_swap(struct page *page, swp_entry_t entry);
 static inline int mem_cgroup_try_charge_swap(struct page *page, swp_entry_t entry)
 {
-	if (mem_cgroup_disabled())
+	if (mem_cgroup_disabled() || is_direct_swap_area(swp_type(entry)))
 		return 0;
 	return __mem_cgroup_try_charge_swap(page, entry);
 }
