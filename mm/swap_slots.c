@@ -343,7 +343,7 @@ repeat:
 
 	get_swap_pages(1, &entry, 1);
 out:
-	if (mem_cgroup_try_charge_swap(page, entry)) {
+	if (!is_direct_swap_area(swp_type(entry)) && mem_cgroup_try_charge_swap(page, entry)) {
 		put_swap_page(page, entry);
 		entry.val = 0;
 	}
