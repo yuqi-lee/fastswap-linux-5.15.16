@@ -76,8 +76,10 @@ inline bool is_direct_swap_area(int type)
 {
     return type >= MAX_SWAPFILES - NUM_REMOTE_SWAP_AREA;
 }
+EXPORT_SYMBOL(is_direct_swap_area);
 
 inline int remote_area_id(int type)
 {
     return MAX_SWAPFILES - NUM_REMOTE_SWAP_AREA - type;
 }
+EXPORT_SYMBOL(remote_area_id);

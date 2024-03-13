@@ -17,8 +17,8 @@
 #define NUM_KFIFOS_FREE 64
 #define PAGES_PER_KFIFO_FREE 1024
 
+/* Defined in directswap/directswap.c */
 extern bool __direct_swap_enabled;
-
 extern struct kfifo kfifos_alloc[NUM_KFIFOS_ALLOC];
 extern struct kfifo kfifos_free[NUM_KFIFOS_FREE];
 extern inline bool is_direct_swap_area(int type);
