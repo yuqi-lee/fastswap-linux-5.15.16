@@ -18,18 +18,28 @@ EXPORT_SYMBOL(kfifos_free);
 
 SYSCALL_DEFINE1(set_direct_swap_enabled, int, enable)
 {
-	int ret, i;
+	int ret, i, type;
 	if(enable) {
 		for(i = 0; i < NUM_KFIFOS_ALLOC; i++) {
 			ret = kfifo_alloc(kfifos_alloc + i, sizeof(swp_entry)*PAGES_PER_KFIFO_ALLOC, GFP_KERNEL);
 			if(unlikely(ret)) {
 				printk("Alloc memory for kfifos_alloc failed with error code %d.", ret);
+				return ret;
 			}
 		}
 		for(i = 0; i < NUM_KFIFOS_FREE; i++) {
 			ret = kfifo_alloc(kfifos_free + i, sizeof(swp_entry)*PAGES_PER_KFIFO_FREE, GFP_KERNEL);
 			if(unlikely(ret)) {
 				printk("Alloc memory for kfifos_free failed with error code %d.", ret);
+				return ret;
+			}
+		}
+		for(i = 0; i < NUM_REMOTE_SWAP_AREA; i++) {
+			type = MAX_SWAPFILES - i - 1;
+			ret = init_swap_address_space(type, NUM_PAGES_PER_REMOTE_SWAP_AREA);
+			if(unlikely(ret)) {
+				printk("init remote swap address space failed with error code %d.", ret);
+				return ret;
 			}
 		}
 	} else {
@@ -38,6 +48,10 @@ SYSCALL_DEFINE1(set_direct_swap_enabled, int, enable)
 		}
 		for(i = 0; i < NUM_KFIFOS_FREE; i++) {
 			kfifo_free(kfifos_free + i);
+		}
+		for(i = 0; i < NUM_REMOTE_SWAP_AREA; i++) {
+			type = MAX_SWAPFILES - i - 1;
+			exit_swap_address_space(type);
 		}
 	}
 
