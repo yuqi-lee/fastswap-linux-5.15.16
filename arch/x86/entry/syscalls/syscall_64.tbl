@@ -371,6 +371,7 @@
 447	common	memfd_secret		sys_memfd_secret
 448	common	process_mrelease	sys_process_mrelease
 449 common  set_direct_swap_enabled sys_set_direct_swap_enabled
+450 common  set_direct_swap_disabled sys_set_direct_swap_disabled
 
 #
 # Due to a historical design error, certain syscalls are numbered differently
