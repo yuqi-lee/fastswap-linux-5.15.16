@@ -23,6 +23,7 @@
 #include <linux/frontswap.h>
 #include <linux/huge_mm.h>
 #include <linux/shmem_fs.h>
+#include <linux/directswap.h>
 #include "internal.h"
 
 /*
@@ -223,7 +224,10 @@ int add_to_swap(struct page *page)
 	 * is swap in later. Always setting the dirty bit for the page solves
 	 * the problem.
 	 */
-	set_page_dirty(page);
+	if(!(direct_swap_enabled() && is_direct_swap_area(swp_type(entry)))) { // [DirectSwap] Skip this
+		set_page_dirty(page);
+	}
+	
 
 	return 1;
 
