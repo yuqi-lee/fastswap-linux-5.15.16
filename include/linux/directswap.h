@@ -14,6 +14,15 @@
 #define NUM_PAGES_PER_REMOTE_SWAP_AREA (10 << 20)
 #define DIRECT_SWAP_PRIORITY -999
 
+// Originally defined in mm/swapfile.c
+#define SWAPFILE_CLUSTER	256 // If huge page swapping is enabled, set to HPAGE_PMD_NR
+#define SWAP_CLUSTER_INFO_COLS						\
+	DIV_ROUND_UP(L1_CACHE_BYTES, sizeof(struct swap_cluster_info))
+#define SWAP_CLUSTER_SPACE_COLS						\
+	DIV_ROUND_UP(SWAP_ADDRESS_SPACE_PAGES, SWAPFILE_CLUSTER)
+#define SWAP_CLUSTER_COLS						\
+	max_t(unsigned int, SWAP_CLUSTER_INFO_COLS, SWAP_CLUSTER_SPACE_COLS)
+
 #define NUM_KFIFOS_ALLOC 64
 #define PAGES_PER_KFIFO_ALLOC 256
 #define NUM_KFIFOS_FREE 64

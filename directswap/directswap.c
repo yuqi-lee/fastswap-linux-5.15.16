@@ -31,21 +31,22 @@ static void setup_swap_info(struct swap_info_struct *p, int prio,
 static int setup_swap_map_and_extents(struct swap_info_struct *p,
 					unsigned char *swap_map,
 					struct swap_cluster_info *cluster_info,
-					unsigned long maxpages,
-					sector_t *span)
+					unsigned long maxpages);
+static void inc_cluster_info_page(struct swap_info_struct *p,
+	struct swap_cluster_info *cluster_info, unsigned long page_nr);
+
 
 SYSCALL_DEFINE1(set_direct_swap_enabled, const char __user *, specialfile)
 {
-	int ret, i, type, prio, error;
+	int ret, i, type, prio, error, nr_extents;
 	struct swap_info_struct *p;
 	struct filename *name;
 	struct file *swap_file = NULL;
 	struct swap_cluster_info *cluster_info = NULL;
-	struct address_space *mapping;
+	//struct address_space *mapping;
 	unsigned long *frontswap_map = NULL;
 	unsigned char *swap_map = NULL;
 	int maxpages = NUM_PAGES_PER_REMOTE_SWAP_AREA;
-	sector_t span;
 
 
 	for(i = 0; i < NUM_KFIFOS_ALLOC; i++) {
@@ -59,14 +60,6 @@ SYSCALL_DEFINE1(set_direct_swap_enabled, const char __user *, specialfile)
 		ret = kfifo_alloc(kfifos_free + i, sizeof(swp_entry)*PAGES_PER_KFIFO_FREE, GFP_KERNEL);
 		if(unlikely(ret)) {
 			printk("Alloc memory for kfifos_free failed with error code %d.", ret);
-			return ret;
-		}
-	}
-	for(i = 0; i < NUM_REMOTE_SWAP_AREA; i++) {
-		type = MAX_SWAPFILES - i - 1;
-		ret = init_swap_address_space(type, NUM_PAGES_PER_REMOTE_SWAP_AREA);
-		if(unlikely(ret)) {
-			printk("init remote swap address space failed with error code %d.", ret);
 			return ret;
 		}
 	}
@@ -102,7 +95,7 @@ SYSCALL_DEFINE1(set_direct_swap_enabled, const char __user *, specialfile)
 		goto bad_set;
 	}
 	nr_extents = setup_swap_map_and_extents(p, swap_map,
-		cluster_info, maxpages, &span);
+		cluster_info, maxpages);
 	if (unlikely(nr_extents < 0)) {
 		error = nr_extents;
 		printk(KERN_ERR "Setup swap_map and extents failed.");
@@ -113,6 +106,15 @@ SYSCALL_DEFINE1(set_direct_swap_enabled, const char __user *, specialfile)
 	frontswap_map = kvcalloc(BITS_TO_LONGS(maxpages),
 					sizeof(long),
 					GFP_KERNEL);
+
+	for(i = 0; i < NUM_REMOTE_SWAP_AREA; i++) {
+		type = MAX_SWAPFILES - i - 1;
+		ret = init_swap_address_space(type, NUM_PAGES_PER_REMOTE_SWAP_AREA);
+		if(unlikely(ret)) {
+			printk("init remote swap address space failed with error code %d.", ret);
+			return ret;
+		}
+	}
 
 	enable_swap_info(p, prio, swap_map, cluster_info, frontswap_map);
 
@@ -180,7 +182,7 @@ int direct_swap_free_remote_page(swp_entry_t entry) {
 
 static struct swap_info_struct *alloc_swap_info_with_type(int type) {
 	struct swap_info_struct *p;
-	struct swap_info_struct *defer = NULL;
+	//struct swap_info_struct *defer = NULL;
 	int i;
 
 	p = kvzalloc(struct_size(p, avail_lists, nr_node_ids), GFP_KERNEL);
@@ -235,8 +237,7 @@ static void enable_swap_info(struct swap_info_struct *p, int prio,
 static int setup_swap_map_and_extents(struct swap_info_struct *p,
 					unsigned char *swap_map,
 					struct swap_cluster_info *cluster_info,
-					unsigned long maxpages,
-					sector_t *span)
+					unsigned long maxpages)
 {
 	unsigned int j, k;
 	unsigned int nr_good_pages;
@@ -247,23 +248,15 @@ static int setup_swap_map_and_extents(struct swap_info_struct *p,
 
 	nr_good_pages = maxpages - 1;	/* omit header page */
 
-	cluster_list_init(&p->free_clusters);
-	cluster_list_init(&p->discard_clusters);
-
-	/* Haven't marked the cluster free yet, no list operation involved */
-	for (i = maxpages; i < round_up(maxpages, SWAPFILE_CLUSTER); i++)
-		inc_cluster_info_page(p, cluster_info, i);
-
 	if (nr_good_pages) {
 		swap_map[0] = SWAP_MAP_BAD;
 		/*
 		 * Not mark the cluster free yet, no list
 		 * operation involved
 		 */
-		inc_cluster_info_page(p, cluster_info, 0);
 		p->max = maxpages;
 		p->pages = nr_good_pages;
-		nr_extents = setup_swap_extents(p, span);
+		nr_extents = 10240 //setup_swap_extents(p, span);
 		if (nr_extents < 0)
 			return nr_extents;
 		nr_good_pages = p->pages;
@@ -276,24 +269,6 @@ static int setup_swap_map_and_extents(struct swap_info_struct *p,
 	if (!cluster_info)
 		return nr_extents;
 
-
-	/*
-	 * Reduce false cache line sharing between cluster_info and
-	 * sharing same address space.
-	 */
-	for (k = 0; k < SWAP_CLUSTER_COLS; k++) {
-		j = (k + col) % SWAP_CLUSTER_COLS;
-		for (i = 0; i < DIV_ROUND_UP(nr_clusters, SWAP_CLUSTER_COLS); i++) {
-			idx = i * SWAP_CLUSTER_COLS + j;
-			if (idx >= nr_clusters)
-				continue;
-			if (cluster_count(&cluster_info[idx]))
-				continue;
-			cluster_set_flag(&cluster_info[idx], CLUSTER_FLAG_FREE);
-			cluster_list_add_tail(&p->free_clusters, cluster_info,
-					      idx);
-		}
-	}
 	return nr_extents;
 }
 
@@ -313,7 +288,6 @@ static void setup_swap_info(struct swap_info_struct *p, int prio,
 	p->swap_map = swap_map;
 	p->cluster_info = cluster_info;
 }
-
 
 inline bool is_direct_swap_area(int type)
 {
