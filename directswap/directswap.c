@@ -10,6 +10,8 @@
 #include <linux/swapfile.h>
 #include <linux/frontswap.h>
 
+#include <asm/barrier.h>
+
 bool __direct_swap_enabled = false;
 EXPORT_SYMBOL(__direct_swap_enabled);
 
@@ -64,32 +66,41 @@ SYSCALL_DEFINE1(set_direct_swap_enabled, const char __user *, specialfile)
 	}
 
 	p = alloc_swap_info_with_type(MAX_SWAPFILES - NUM_REMOTE_SWAP_AREA);
-	if (IS_ERR(p))
-		return PTR_ERR(p);
-
+	if (IS_ERR(p)) {
+		printk(KERN_ERR "Allo swap info with specific type failed.");
+		goto bad_set;
+	}
+		
 	name = getname(specialfile);
 	if (IS_ERR(name)) {
 		error = PTR_ERR(name);
 		name = NULL;
+		printk(KERN_ERR "Name of swap file is invalid.");
 		goto bad_set;
 	}
+
 	swap_file = file_open_name(name, O_RDWR|O_LARGEFILE, 0);
 	if (IS_ERR(swap_file)) {
 		error = PTR_ERR(swap_file);
 		swap_file = NULL;
+		printk(KERN_ERR "Open swap file failed.");
 		goto bad_set;
 	}
+	
 	p->swap_file = swap_file;
 	prio = -1;
 	swap_map = vzalloc(maxpages);
 	if (!swap_map) {
 		error = -ENOMEM;
+		printk(KERN_ERR "Alloc space for swap_map failed.");
 		goto bad_set;
 	}
+
 	if (IS_ENABLED(CONFIG_FRONTSWAP))
 	frontswap_map = kvcalloc(BITS_TO_LONGS(maxpages),
 					sizeof(long),
 					GFP_KERNEL);
+
 	enable_swap_info(p, prio, swap_map, cluster_info, frontswap_map);
 
  	__direct_swap_enabled = 1;
@@ -171,6 +182,7 @@ static struct swap_info_struct *alloc_swap_info_with_type(int type) {
 		return ERR_PTR(-EPERM);
 	}
 	p->type = type;
+	smp_store_release(&swap_info[type], p);
 	p->swap_extent_root = RB_ROOT;
 	plist_node_init(&p->list, 0);
 	for_each_node(i)
@@ -211,8 +223,6 @@ static void setup_swap_info(struct swap_info_struct *p, int prio,
 			    unsigned char *swap_map,
 			    struct swap_cluster_info *cluster_info)
 {
-	int i;
-
 	if (prio >= 0)
 		p->prio = prio;
 	else
