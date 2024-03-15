@@ -256,7 +256,7 @@ static int setup_swap_map_and_extents(struct swap_info_struct *p,
 		 */
 		p->max = maxpages;
 		p->pages = nr_good_pages;
-		nr_extents = 10240 //setup_swap_extents(p, span);
+		nr_extents = 10240; //setup_swap_extents(p, span);
 		if (nr_extents < 0)
 			return nr_extents;
 		nr_good_pages = p->pages;
