@@ -1170,7 +1170,7 @@ static struct swap_info_struct *_swap_info_get(swp_entry_t entry)
 	p = __swap_info_get(entry);
 	if (!p)
 		goto out;
-	if (data_race(!p->swap_map[swp_offset(entry)]))
+	if (data_race(!p->swap_map[swp_offset(entry)]) && !is_direct_swap_area(swp_type(entry)))
 		goto bad_free;
 	return p;
 
