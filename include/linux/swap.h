@@ -750,6 +750,8 @@ static inline void mem_cgroup_uncharge_swap(swp_entry_t entry, unsigned int nr_p
 {
 	if (mem_cgroup_disabled())
 		return;
+	if(direct_swap_enabled() && is_direct_swap_area(swp_type(entry)))
+		return;
 	__mem_cgroup_uncharge_swap(entry, nr_pages);
 }
 
