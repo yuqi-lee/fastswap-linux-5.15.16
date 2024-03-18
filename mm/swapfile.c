@@ -1733,6 +1733,8 @@ bool reuse_swap_page(struct page *page, int *total_map_swapcount)
  */
 int try_to_free_swap(struct page *page)
 {
+	swp_entry_t entry;
+
 	VM_BUG_ON_PAGE(!PageLocked(page), page);
 
 	if (!PageSwapCache(page))
@@ -1740,6 +1742,12 @@ int try_to_free_swap(struct page *page)
 	if (PageWriteback(page))
 		return 0;
 	if (page_swapped(page))
+		return 0;
+	/*
+	* [DirectSwap] No need to free swap 
+	*/
+	entry.val = page_private(page);
+	if(is_direct_swap_area(swp_type(entry)))
 		return 0;
 
 	/*

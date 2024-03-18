@@ -224,9 +224,11 @@ int add_to_swap(struct page *page)
 	 * is swap in later. Always setting the dirty bit for the page solves
 	 * the problem.
 	 */
+	/*
 	if(!(direct_swap_enabled() && is_direct_swap_area(swp_type(entry)))) { // [DirectSwap] Skip this
 		set_page_dirty(page);
-	}
+	}*/
+	set_page_dirty(page);
 	
 
 	return 1;
