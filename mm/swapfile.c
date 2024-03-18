@@ -3426,6 +3426,8 @@ void si_swapinfo(struct sysinfo *val)
 
 	spin_lock(&swap_lock);
 	for (type = 0; type < nr_swapfiles; type++) {
+		if(direct_swap_enabled() && is_direct_swap_area(type))
+			continue;
 		struct swap_info_struct *si = swap_info[type];
 
 		if ((si->flags & SWP_USED) && !(si->flags & SWP_WRITEOK))

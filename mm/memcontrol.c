@@ -62,6 +62,7 @@
 #include <linux/tracehook.h>
 #include <linux/psi.h>
 #include <linux/seq_buf.h>
+#include <linux/directswap.h>
 #include "internal.h"
 #include <net/sock.h>
 #include <net/ip.h>

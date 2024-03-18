@@ -295,12 +295,6 @@ inline bool is_direct_swap_area(int type)
 }
 EXPORT_SYMBOL(is_direct_swap_area);
 
-inline bool is_direct_swap_area_with_entry(swp_entry_t entry)
-{
-    return swp_type(entry) >= MAX_SWAPFILES - NUM_REMOTE_SWAP_AREA;
-}
-EXPORT_SYMBOL(is_direct_swap_area_with_entry);
-
 inline int remote_area_id(int type)
 {
     return MAX_SWAPFILES - NUM_REMOTE_SWAP_AREA - type;
