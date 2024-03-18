@@ -33,6 +33,7 @@ extern bool __direct_swap_enabled;
 extern struct kfifo kfifos_alloc[NUM_KFIFOS_ALLOC];
 extern struct kfifo kfifos_free[NUM_KFIFOS_FREE];
 extern inline bool is_direct_swap_area(int type);
+extern inline bool is_direct_swap_area_with_entry(swp_entry_t entry);
 extern inline int remote_area_id(int type);
 
 int direct_swap_alloc_remote_pages(int n_goal, unsigned long entry_size, swp_entry_t swp_entries[]);
