@@ -9,6 +9,7 @@
 #include <linux/swapops.h>
 #include <linux/swapfile.h>
 #include <linux/frontswap.h>
+#include <linux/swap_cgroup.h>
 
 #include <asm/barrier.h>
 
@@ -94,6 +95,13 @@ SYSCALL_DEFINE1(set_direct_swap_enabled, const char __user *, specialfile)
 		printk(KERN_ERR "Alloc space for swap_map failed.");
 		goto bad_set;
 	}
+
+	error = swap_cgroup_swapon(p->type, maxpages);
+	if (error) {
+		printk(KERN_ERR "Setup swap control group failed.");
+		goto bad_set;
+	}
+
 	nr_extents = setup_swap_map_and_extents(p, swap_map,
 		cluster_info, maxpages);
 	if (unlikely(nr_extents < 0)) {
