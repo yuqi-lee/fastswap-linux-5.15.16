@@ -720,10 +720,10 @@ static void swap_range_free(struct swap_info_struct *si, unsigned long offset,
 	unsigned long begin = offset;
 	unsigned long end = offset + nr_entries - 1;
 	void (*swap_slot_free_notify)(struct block_device *, unsigned long);
-	bool is_direct_swap = direct_swap_enabled() && is_direct_swap_area(swp_type(entry));
+	bool is_direct_swap = direct_swap_enabled() && is_direct_swap_area(si->type);
 
 	if(is_direct_swap)
-		direct_swap_free_remote_page(entry);
+		direct_swap_free_remote_page(swp_entry(si->type, offset));
 
 	if (!is_direct_swap && offset < si->lowest_bit)
 		si->lowest_bit = offset;
