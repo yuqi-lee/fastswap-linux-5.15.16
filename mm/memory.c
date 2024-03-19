@@ -3536,8 +3536,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				if (mem_cgroup_swapin_charge_page(page,
 					vma->vm_mm, GFP_KERNEL, entry)) {
 					if(direct_swap_enabled() && is_direct_swap_area(swp_type(entry)))
-						pr_err("[DirectSwap]: mem cgroup swapin charge page failed \
-									with type = %d, offset = %d]", swp_type(entry), swp_offset(entry));
+						pr_err("[DirectSwap]: virtual memory fault (out of memory) mem cgroup swapin charge page failed (error code: %d)", 7);
 					ret = VM_FAULT_OOM;
 					goto out_page;
 				}
@@ -3567,8 +3566,11 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 			 */
 			vmf->pte = pte_offset_map_lock(vma->vm_mm, vmf->pmd,
 					vmf->address, &vmf->ptl);
-			if (likely(pte_same(*vmf->pte, vmf->orig_pte)))
+			if (likely(pte_same(*vmf->pte, vmf->orig_pte))) {
+				pr_err("[DirectSwap]: virtual memory fault (out of memory) with pte_offset_map_lock (error code: %d)", 8);
 				ret = VM_FAULT_OOM;
+			}
+				
 			delayacct_clear_flag(current, DELAYACCT_PF_SWAPIN);
 			goto unlock;
 		}
@@ -3607,6 +3609,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 
 	page = ksm_might_need_to_copy(page, vma, vmf->address);
 	if (unlikely(!page)) {
+		pr_err("[DirectSwap]: virtual memory fault (out of memory) with ksm_might_need_to_copy (error code: %d)", 9);
 		ret = VM_FAULT_OOM;
 		page = swapcache;
 		goto out_page;
@@ -3739,8 +3742,11 @@ static vm_fault_t do_anonymous_page(struct vm_fault *vmf)
 	 *
 	 * Here we only have mmap_read_lock(mm).
 	 */
-	if (pte_alloc(vma->vm_mm, vmf->pmd))
+	if (pte_alloc(vma->vm_mm, vmf->pmd)) {
+		pr_err("[DirectSwap]: virtual memory fault (out of memory) with pte (error code: %d)", 3);
 		return VM_FAULT_OOM;
+	}
+		
 
 	/* See comment in handle_pte_fault() */
 	if (unlikely(pmd_trans_unstable(vmf->pmd)))
@@ -3769,14 +3775,23 @@ static vm_fault_t do_anonymous_page(struct vm_fault *vmf)
 	}
 
 	/* Allocate our own private page. */
-	if (unlikely(anon_vma_prepare(vma)))
+	if (unlikely(anon_vma_prepare(vma))) {
+		pr_err("[DirectSwap]: virtual memory fault (out of memory) with anon vma prepare (error code: %d)", 4);
 		goto oom;
+	}
+		
 	page = alloc_zeroed_user_highpage_movable(vma, vmf->address);
-	if (!page)
+	if (!page) {
+		pr_err("[DirectSwap]: virtual memory fault (out of memory) with alloc_zeroed_user_highpage_movable (error code: %d)", 5);
 		goto oom;
+	}
+		
 
-	if (mem_cgroup_charge(page, vma->vm_mm, GFP_KERNEL))
+	if (mem_cgroup_charge(page, vma->vm_mm, GFP_KERNEL)) {
+		pr_err("[DirectSwap]: virtual memory fault (out of memory) with mem_cgroup_charge (error code: %d)", 6);
 		goto oom_free_page;
+	}
+		
 	cgroup_throttle_swaprate(page, GFP_KERNEL);
 
 	/*
@@ -4638,12 +4653,19 @@ static vm_fault_t __handle_mm_fault(struct vm_area_struct *vma,
 
 	pgd = pgd_offset(mm, address);
 	p4d = p4d_alloc(mm, pgd, address);
-	if (!p4d)
+	if (!p4d) {
+		pr_err("[DirectSwap]: virtual memory fault (out of memory) with p4d (error code: %d)", 0);
 		return VM_FAULT_OOM;
+	}
+		
 
 	vmf.pud = pud_alloc(mm, p4d, address);
 	if (!vmf.pud)
+	{
+		pr_err("[DirectSwap]: virtual memory fault (out of memory) with pud (error code: %d)", 1);
 		return VM_FAULT_OOM;
+	}
+		
 retry_pud:
 	if (pud_none(*vmf.pud) && __transparent_hugepage_enabled(vma)) {
 		ret = create_huge_pud(&vmf);
@@ -4669,8 +4691,10 @@ retry_pud:
 	}
 
 	vmf.pmd = pmd_alloc(mm, vmf.pud, address);
-	if (!vmf.pmd)
+	if (!vmf.pmd) {
+		pr_err("[DirectSwap]: virtual memory fault (out of memory) with pmd (error code: %d)", 2);
 		return VM_FAULT_OOM;
+	}
 
 	/* Huge pud page fault raced with pmd_alloc? */
 	if (pud_trans_unstable(vmf.pud))
