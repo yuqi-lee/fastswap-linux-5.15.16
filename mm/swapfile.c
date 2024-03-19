@@ -720,10 +720,14 @@ static void swap_range_free(struct swap_info_struct *si, unsigned long offset,
 	unsigned long begin = offset;
 	unsigned long end = offset + nr_entries - 1;
 	void (*swap_slot_free_notify)(struct block_device *, unsigned long);
+	bool is_direct_swap = direct_swap_enabled() && is_direct_swap_area(swp_type(entry));
 
-	if (offset < si->lowest_bit)
+	if(is_direct_swap)
+		direct_swap_free_remote_page(entry);
+
+	if (!is_direct_swap && offset < si->lowest_bit)
 		si->lowest_bit = offset;
-	if (end > si->highest_bit) {
+	if (!is_direct_swap && end > si->highest_bit) {
 		bool was_full = !si->highest_bit;
 
 		WRITE_ONCE(si->highest_bit, end);
@@ -732,7 +736,7 @@ static void swap_range_free(struct swap_info_struct *si, unsigned long offset,
 	}
 	atomic_long_add(nr_entries, &nr_swap_pages);
 	si->inuse_pages -= nr_entries;
-	if (si->flags & SWP_BLKDEV)
+	if (!is_direct_swap && (si->flags & SWP_BLKDEV))
 		swap_slot_free_notify =
 			si->bdev->bd_disk->fops->swap_slot_free_notify;
 	else
@@ -1354,9 +1358,6 @@ void swap_free(swp_entry_t entry)
 
 	p = _swap_info_get(entry);
 	if (p) {
-		if(direct_swap_enabled() && !direct_swap_free_remote_page(entry)) {
-			return;
-		}
 		__swap_entry_free(p, entry);
 	}
 }
@@ -3427,8 +3428,6 @@ void si_swapinfo(struct sysinfo *val)
 
 	spin_lock(&swap_lock);
 	for (type = 0; type < nr_swapfiles; type++) {
-		if(direct_swap_enabled() && is_direct_swap_area(type))
-			continue;
 		struct swap_info_struct *si = swap_info[type];
 
 		if ((si->flags & SWP_USED) && !(si->flags & SWP_WRITEOK))

@@ -239,7 +239,14 @@ static void enable_swap_info(struct swap_info_struct *p, int prio,
 	//percpu_ref_resurrect(&p->users);
 	spin_lock(&swap_lock);
 	spin_lock(&p->lock);
-	//_enable_swap_info(p);
+
+	/*
+		add necessary steps of _enable_swap_info(p);
+	*/
+	p->flags |= SWP_WRITEOK;
+	atomic_long_add(p->pages, &nr_swap_pages);
+	total_swap_pages += p->pages;
+
 	spin_unlock(&p->lock);
 	spin_unlock(&swap_lock);
 }
