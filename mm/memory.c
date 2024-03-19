@@ -75,6 +75,7 @@
 #include <linux/perf_event.h>
 #include <linux/ptrace.h>
 #include <linux/vmalloc.h>
+#include <linux/directswap.h>
 
 #include <trace/events/kmem.h>
 
@@ -3534,6 +3535,9 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 
 				if (mem_cgroup_swapin_charge_page(page,
 					vma->vm_mm, GFP_KERNEL, entry)) {
+					if(direct_swap_enabled() && is_direct_swap_area(swp_type(entry)))
+						pr_err("[DirectSwap]: mem cgroup swapin charge page failed \
+									with type = %d, offset = %d]", swp_type(entry), swp_offset(entry));
 					ret = VM_FAULT_OOM;
 					goto out_page;
 				}

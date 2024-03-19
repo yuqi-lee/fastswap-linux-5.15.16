@@ -164,16 +164,17 @@ SYSCALL_DEFINE1(set_direct_swap_disabled, const char __user *, specialfile)
 
 int direct_swap_alloc_remote_pages(int n_goal, unsigned long entry_size, swp_entry_t swp_entries[]) {
 	u32 nproc = raw_smp_processor_id();
-	int count;
-	//u32 total_cpus = num_online_cpus();
-	//u32 idx = (nproc * NUM_KFIFOS_ALLOC) / total_cpus;
-	if(kfifo_len(kfifos_alloc + nproc) >= n_goal) {
-		for(count = 0; count < n_goal ; count++) {
-			kfifo_out(kfifos_alloc + nproc, swp_entries + count, sizeof(swp_entry_t));
-		}
-		return count;
+	int count, ret;
+	
+	for(count = 0; count < n_goal ; count++) {
+		while(kfifo_is_empty(kfifos_alloc + nproc))	;
+		ret = kfifo_out(kfifos_alloc + nproc, swp_entries + count, sizeof(swp_entry_t));
+		if (ret != sizeof(swp_entry_t)) {
+          printk(KERN_ERR "[DirectSwap]: Failed to read remote entry from ALLOC FIFOs.\n");
+          break;
+        }
 	}
-	return 0;
+	return count;
 }
 
 int direct_swap_free_remote_page(swp_entry_t entry) {
@@ -183,6 +184,7 @@ int direct_swap_free_remote_page(swp_entry_t entry) {
 	if(type < MAX_SWAPFILES - NUM_REMOTE_SWAP_AREA) {
 		return 1;
 	} else {
+		while(kfifo_is_full(kfifos_free + nproc)) ;
 		kfifo_in(kfifos_free + nproc, &entry, sizeof(swp_entry_t));
 		return 0;
 	}

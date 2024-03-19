@@ -1050,6 +1050,16 @@ int get_swap_pages(int n_goal, swp_entry_t swp_entries[], int entry_size)
 	/* Only single cluster request supported */
 	WARN_ON_ONCE(n_goal > 1 && size == SWAPFILE_CLUSTER);
 
+	avail_pgs = atomic_long_read(&nr_swap_pages) / size;
+	if (avail_pgs <= 0) {
+		spin_unlock(&swap_avail_lock);
+		goto noswap;
+	}
+
+	n_goal = min3((long)n_goal, (long)SWAP_BATCH, avail_pgs);
+
+	atomic_long_sub(n_goal * size, &nr_swap_pages);
+
 	/*
  	* [DirectSwap] Alloc remote pages as swap pages.
  	*/
@@ -1062,16 +1072,7 @@ int get_swap_pages(int n_goal, swp_entry_t swp_entries[], int entry_size)
 
 	spin_lock(&swap_avail_lock);
 
-	avail_pgs = atomic_long_read(&nr_swap_pages) / size;
-	if (avail_pgs <= 0) {
-		spin_unlock(&swap_avail_lock);
-		goto noswap;
-	}
-
-	n_goal = min3((long)n_goal, (long)SWAP_BATCH, avail_pgs);
-
-	atomic_long_sub(n_goal * size, &nr_swap_pages);
-
+	
 start_over:
 	node = numa_node_id();
 	plist_for_each_entry_safe(si, next, &swap_avail_heads[node], avail_lists[node]) {
