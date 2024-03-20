@@ -164,7 +164,7 @@ SYSCALL_DEFINE1(set_direct_swap_disabled, const char __user *, specialfile)
 
 int direct_swap_alloc_remote_pages(int n_goal, unsigned long entry_size, swp_entry_t swp_entries[]) {
 	u32 nproc = raw_smp_processor_id();
-	int count, ret, type;
+	int count, ret, type, offset;
 	struct swap_info_struct *si = NULL;
 	
 	for(count = 0; count < n_goal ; count++) {
@@ -174,9 +174,11 @@ int direct_swap_alloc_remote_pages(int n_goal, unsigned long entry_size, swp_ent
           printk(KERN_ERR "[DirectSwap]: Failed to read remote entry from ALLOC FIFOs.\n");
           break;
         }
-		
+
 		/* Update corresponding swap_map entry*/
-		type = swp_type(entry);
+		type = swp_type(swp_entries[count]);
+		offset = swp_offset(swp_entries[count]);
+
 		if(unlikely(!is_direct_swap_area(type))) {
 			printk(KERN_ERR "[DirectSwap]: Invalid remote entry with type = %d.\n", type);
 			break;
