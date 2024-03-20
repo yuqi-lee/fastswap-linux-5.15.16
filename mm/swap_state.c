@@ -439,8 +439,10 @@ struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 		 * that would confuse statistics.
 		 */
 		si = get_swap_device(entry);
-		if (!si)
+		if (!si) {
+			pr_err("[DirectSwap]: __read_swap_cache_async get_swap_device failed with error code %d", 0);
 			return NULL;
+		}
 		page = find_get_page(swap_address_space(entry),
 				     swp_offset(entry));
 		put_swap_device(si);
@@ -455,8 +457,10 @@ struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 		 * as SWAP_HAS_CACHE.  That's done in later part of code or
 		 * else swap_off will be aborted if we return NULL.
 		 */
-		if (!__swp_swapcount(entry) && swap_slot_cache_enabled)
+		if (!__swp_swapcount(entry) && swap_slot_cache_enabled) {
+			pr_err("[DirectSwap]: __read_swap_cache_async swp_swapcount failed with error code %d", 1);
 			return NULL;
+		}
 
 		/*
 		 * Get a new page to read into from swap.  Allocate it now,
@@ -464,8 +468,10 @@ struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 		 * cause any racers to loop around until we add it to cache.
 		 */
 		page = alloc_page_vma(gfp_mask, vma, addr);
-		if (!page)
+		if (!page) {
+			pr_err("[DirectSwap]: __read_swap_cache_async alloc_page_vma failed with error code %d", 2);
 			return NULL;
+		}
 
 		/*
 		 * Swap entry may have been freed since our caller observed it.
@@ -475,8 +481,10 @@ struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 			break;
 
 		put_page(page);
-		if (err != -EEXIST)
+		if (err != -EEXIST) {
+			pr_err("[DirectSwap]: __read_swap_cache_async err != -EEXIST failed with error code %d", 3);
 			return NULL;
+		}
 
 		/*
 		 * We might race against __delete_from_swap_cache(), and
@@ -495,12 +503,16 @@ struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 	__SetPageLocked(page);
 	__SetPageSwapBacked(page);
 
-	if (mem_cgroup_swapin_charge_page(page, NULL, gfp_mask, entry))
+	if (mem_cgroup_swapin_charge_page(page, NULL, gfp_mask, entry)) {
+		pr_err("[DirectSwap]: __read_swap_cache_async mem_cgroup_swapin_charge_page failed with error code %d", 4);
 		goto fail_unlock;
+	}
 
 	/* May fail (-ENOMEM) if XArray node allocation failed. */
-	if (add_to_swap_cache(page, entry, gfp_mask & GFP_RECLAIM_MASK, &shadow))
+	if (add_to_swap_cache(page, entry, gfp_mask & GFP_RECLAIM_MASK, &shadow)) {
+		pr_err("[DirectSwap]: __read_swap_cache_async mem_cgroup_swapin_charge_page failed with error code %d", 5);
 		goto fail_unlock;
+	}
 
 	mem_cgroup_swapin_uncharge_swap(entry);
 
@@ -531,6 +543,9 @@ struct page *read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 	bool page_was_allocated;
 	struct page *retpage = __read_swap_cache_async(entry, gfp_mask,
 			vma, addr, &page_was_allocated);
+	
+	if(!page_was_allocated && is_direct_swap_area(swp_type(entry)))
+		pr_err("[DirectSwap]: read swap cache async failed.");
 
 	if (page_was_allocated)
 		swap_readpage(retpage, do_poll);
