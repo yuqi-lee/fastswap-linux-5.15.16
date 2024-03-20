@@ -843,11 +843,6 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 	};
 	int cpu; 
 
-	/*
-	* [DirectSwap]: Debugging
-	*/
-	pr_err("[DirectSwap]: bug on using vma readahead...");
-
 	// Read the faulted page synchronously
 	preempt_disable();
 	cpu = smp_processor_id();
