@@ -20,6 +20,9 @@ struct kfifo kfifos_alloc[NUM_KFIFOS_ALLOC];
 EXPORT_SYMBOL(kfifos_alloc);
 struct kfifo kfifos_free[NUM_KFIFOS_FREE];
 EXPORT_SYMBOL(kfifos_free);
+struct kfifo kfifos_reclaim_alloc;
+EXPORT_SYMBOL(kfifos_reclaim_alloc);
+
 
 static struct swap_info_struct *alloc_swap_info_with_type(int type);
 static void enable_swap_info(struct swap_info_struct *p, int prio,
@@ -64,6 +67,13 @@ SYSCALL_DEFINE1(set_direct_swap_enabled, const char __user *, specialfile)
 			return ret;
 		}
 	}
+	
+	ret = kfifo_alloc(&kfifos_reclaim_alloc, sizeof(swp_entry)*PAGES_IN_RECLAIM_KFIFO, GFP_KERNEL);
+	if(unlikely(ret)) {
+		printk("Alloc memory for kfifos_reclaim_alloc failed with error code %d.", ret);
+		return ret;
+	}
+
 
 	p = alloc_swap_info_with_type(MAX_SWAPFILES - NUM_REMOTE_SWAP_AREA);
 	if (IS_ERR(p)) {
@@ -167,7 +177,38 @@ int direct_swap_alloc_remote_pages(int n_goal, unsigned long entry_size, swp_ent
 	int count, ret, type, offset;
 	struct swap_info_struct *si = NULL;
 	
-	for(count = 0; count < n_goal ; count++) {
+	count = 0;
+
+	/*Reclaim CPU path*/
+	if(likely(nproc == FASTSWAP_RECLAIM_CPU)) {
+		while(!kfifo_is_empty(&kfifos_reclaim_alloc) && count < n_goal) {
+			ret = kfifo_out(&kfifos_reclaim_alloc, swp_entries + count, sizeof(swp_entry_t));
+			if (ret != sizeof(swp_entry_t)) {
+          		printk(KERN_ERR "[DirectSwap]: Failed to read remote entry from RECLAIM ALLOC FIFO.\n");
+          		break;
+        	}
+
+			/* Update corresponding swap_map entry*/
+			type = swp_type(swp_entries[count]);
+			offset = swp_offset(swp_entries[count]);
+
+			if(unlikely(!is_direct_swap_area(type))) {
+				printk(KERN_ERR "[DirectSwap]: Invalid remote entry with type = %d.\n", type);
+				break;
+			}
+
+			si = swap_info[type];
+			if(unlikely(!si)) {
+				printk(KERN_ERR "[DirectSwap]: Invalid remote entry with type = %d.\n", type);
+				break;
+			}
+			WRITE_ONCE(si->swap_map[offset], SWAP_HAS_CACHE);
+			count++;
+		}
+	}
+	
+	/*Normal path*/
+	for(; count < n_goal ; count++) {
 		while(kfifo_is_empty(kfifos_alloc + nproc))	;
 		ret = kfifo_out(kfifos_alloc + nproc, swp_entries + count, sizeof(swp_entry_t));
 		if (ret != sizeof(swp_entry_t)) {
@@ -191,6 +232,7 @@ int direct_swap_alloc_remote_pages(int n_goal, unsigned long entry_size, swp_ent
 		}
 		WRITE_ONCE(si->swap_map[offset], SWAP_HAS_CACHE);
 	}
+	
 	return count;
 }
 

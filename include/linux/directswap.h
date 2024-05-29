@@ -9,6 +9,7 @@
 #include <linux/atomic.h>
 #include <linux/kfifo.h>
 
+#define FASTSWAP_RECLAIM_CPU 30
 
 #define NUM_REMOTE_SWAP_AREA 1
 #define NUM_PAGES_PER_REMOTE_SWAP_AREA (10 << 20)
@@ -27,11 +28,14 @@
 #define PAGES_PER_KFIFO_ALLOC 256
 #define NUM_KFIFOS_FREE 64
 #define PAGES_PER_KFIFO_FREE 1024
+#define PAGES_IN_RECLAIM_KFIFO 1024
 
 /* Defined in directswap/directswap.c */
 extern bool __direct_swap_enabled;
 extern struct kfifo kfifos_alloc[NUM_KFIFOS_ALLOC];
 extern struct kfifo kfifos_free[NUM_KFIFOS_FREE];
+extern struct kfifo kfifos_reclaim_alloc;
+
 extern inline bool is_direct_swap_area(int type);
 extern inline int remote_area_id(int type);
 

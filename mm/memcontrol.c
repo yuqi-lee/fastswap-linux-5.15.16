@@ -69,10 +69,11 @@
 #include "slab.h"
 
 #include <linux/uaccess.h>
+#include <linux/directswap.h>
 
 #include <trace/events/vmscan.h>
 
-#define FASTSWAP_RECLAIM_CPU 7
+
 
 struct cgroup_subsys memory_cgrp_subsys __read_mostly;
 EXPORT_SYMBOL(memory_cgrp_subsys);
