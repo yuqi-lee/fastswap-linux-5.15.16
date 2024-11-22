@@ -39,6 +39,8 @@ static int setup_swap_map_and_extents(struct swap_info_struct *p,
 static void inc_cluster_info_page(struct swap_info_struct *p,
 	struct swap_cluster_info *cluster_info, unsigned long page_nr);
 
+static u32 real_offset_to_fake_offset(u64 real_offset);
+
 
 SYSCALL_DEFINE1(set_direct_swap_enabled, const char __user *, specialfile)
 {
@@ -174,7 +176,9 @@ SYSCALL_DEFINE1(set_direct_swap_disabled, const char __user *, specialfile)
 
 int direct_swap_alloc_remote_pages(int n_goal, unsigned long entry_size, swp_entry_t swp_entries[]) {
 	u32 nproc = raw_smp_processor_id();
-	int count, ret, type, offset;
+	int count, ret, type;
+	u64 offset;
+	u32 offset_fake;
 	struct swap_info_struct *si = NULL;
 	
 	count = 0;
@@ -202,7 +206,8 @@ int direct_swap_alloc_remote_pages(int n_goal, unsigned long entry_size, swp_ent
 				printk(KERN_ERR "[DirectSwap]: Invalid remote entry with type = %d.\n", type);
 				break;
 			}
-			WRITE_ONCE(si->swap_map[offset], SWAP_HAS_CACHE);
+			offset_fake = real_offset_to_fake_offset(offset);
+			WRITE_ONCE(si->swap_map[offset_fake], SWAP_HAS_CACHE);
 			count++;
 		}
 	}
@@ -230,7 +235,8 @@ int direct_swap_alloc_remote_pages(int n_goal, unsigned long entry_size, swp_ent
 			printk(KERN_ERR "[DirectSwap]: Invalid remote entry with type = %d.\n", type);
 			break;
 		}
-		WRITE_ONCE(si->swap_map[offset], SWAP_HAS_CACHE);
+		offset_fake = real_offset_to_fake_offset(offset);
+		WRITE_ONCE(si->swap_map[offset_fake], SWAP_HAS_CACHE);
 	}
 	
 	return count;
@@ -363,6 +369,13 @@ static void setup_swap_info(struct swap_info_struct *p, int prio,
 	p->list.prio = -p->prio;
 	p->swap_map = swap_map;
 	p->cluster_info = cluster_info;
+}
+
+static u32 real_offset_to_fake_offset(u64 real_offset) 
+{
+	u32 fake_offset;
+	fake_offset = (real_offset & ((1 << DIRECT_SWAP_AREA_SHIFT) - 1)) >> 12; //TODO: PAGE_SHIFT
+	return fake_offset;
 }
 
 inline bool is_direct_swap_area(int type)

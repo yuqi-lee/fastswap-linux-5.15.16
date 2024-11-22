@@ -29,6 +29,7 @@
 #define NUM_KFIFOS_FREE 64
 #define PAGES_PER_KFIFO_FREE 1024
 #define PAGES_IN_RECLAIM_KFIFO 1024
+#define DIRECT_SWAP_AREA_SHIFT 35 // 32GiB
 
 /* Defined in directswap/directswap.c */
 extern bool __direct_swap_enabled;
