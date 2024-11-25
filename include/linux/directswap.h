@@ -12,7 +12,7 @@
 #define FASTSWAP_RECLAIM_CPU 30
 
 #define NUM_REMOTE_SWAP_AREA 1
-#define NUM_PAGES_PER_REMOTE_SWAP_AREA (10 << 20)
+#define NUM_PAGES_PER_REMOTE_SWAP_AREA (16 << 20)
 #define DIRECT_SWAP_PRIORITY -999
 
 // Originally defined in mm/swapfile.c

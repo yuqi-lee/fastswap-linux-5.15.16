@@ -206,8 +206,8 @@ int direct_swap_alloc_remote_pages(int n_goal, unsigned long entry_size, swp_ent
 				printk(KERN_ERR "[DirectSwap]: Invalid remote entry with type = %d.\n", type);
 				break;
 			}
-			offset_fake = real_offset_to_fake_offset(offset);
-			WRITE_ONCE(si->swap_map[offset_fake], SWAP_HAS_CACHE);
+			//offset_fake = real_offset_to_fake_offset(offset);
+			WRITE_ONCE(si->swap_map[offset], SWAP_HAS_CACHE);
 			count++;
 		}
 	}
@@ -235,8 +235,8 @@ int direct_swap_alloc_remote_pages(int n_goal, unsigned long entry_size, swp_ent
 			printk(KERN_ERR "[DirectSwap]: Invalid remote entry with type = %d.\n", type);
 			break;
 		}
-		offset_fake = real_offset_to_fake_offset(offset);
-		WRITE_ONCE(si->swap_map[offset_fake], SWAP_HAS_CACHE);
+		//offset_fake = real_offset_to_fake_offset(offset);
+		WRITE_ONCE(si->swap_map[offset], SWAP_HAS_CACHE);
 	}
 	
 	return count;
