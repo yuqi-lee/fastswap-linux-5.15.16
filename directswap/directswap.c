@@ -22,6 +22,8 @@ struct kfifo kfifos_free[NUM_KFIFOS_FREE];
 EXPORT_SYMBOL(kfifos_free);
 struct kfifo kfifos_reclaim_alloc;
 EXPORT_SYMBOL(kfifos_reclaim_alloc);
+atomic_t num_kfifos_free_fail = ATOMIC_INIT(0);
+EXPORT_SYMBOL(num_kfifos_free_fail);
 
 
 static struct swap_info_struct *alloc_swap_info_with_type(int type);
@@ -245,11 +247,18 @@ int direct_swap_alloc_remote_pages(int n_goal, unsigned long entry_size, swp_ent
 int direct_swap_free_remote_page(swp_entry_t entry) {
 	u32 nproc = raw_smp_processor_id();
 	int type = swp_type(entry);
+	int count = 0;
 
 	if(type < MAX_SWAPFILES - NUM_REMOTE_SWAP_AREA) {
 		return 1;
 	} else {
-		while(kfifo_is_full(kfifos_free + nproc)) ;
+		while(kfifo_is_full(kfifos_free + nproc) && count < 100) {
+			count++;
+		}
+		if(count >= 100) {
+			atomic_inc(&num_kfifos_free_fail);
+			return 0;
+		}
 		kfifo_in(kfifos_free + nproc, &entry, sizeof(swp_entry_t));
 		return 0;
 	}
