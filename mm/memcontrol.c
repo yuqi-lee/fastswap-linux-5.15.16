@@ -69,6 +69,7 @@
 #include "slab.h"
 
 #include <linux/uaccess.h>
+#include <linux/type.h>
 #include <linux/directswap.h>
 
 #include <trace/events/vmscan.h>
@@ -2304,6 +2305,7 @@ static void high_work_func(struct work_struct *work)
 	unsigned long high = READ_ONCE(memcg->memory.high);
 	unsigned long nr_pages = page_counter_read(&memcg->memory);
 	unsigned long reclaim;
+	u32 rand;
 
 	if (nr_pages > high) {
 		reclaim = min(nr_pages - high, MAX_RECLAIM_OFFLOAD);
@@ -2312,8 +2314,11 @@ static void high_work_func(struct work_struct *work)
 		reclaim_high(memcg, reclaim, GFP_KERNEL);
 	}
 
-	if (page_counter_read(&memcg->memory) > READ_ONCE(memcg->memory.high))
-		schedule_work_on(FASTSWAP_RECLAIM_CPU, &memcg->high_work);
+	if (page_counter_read(&memcg->memory) > READ_ONCE(memcg->memory.high)) {
+		rand = get_random_u32() % 4;
+		schedule_work_on(FASTSWAP_RECLAIM_CPU+rand, &memcg->high_work);
+	}
+		
 }
 
 /*
@@ -2686,6 +2691,7 @@ done_restock:
 		unsigned long high_mem_limit;
 		unsigned long curr_mem_pages;
 		unsigned long excess;
+		u32 rand;
 
 		curr_mem_pages = page_counter_read(&memcg->memory);
 		high_mem_limit = READ_ONCE(memcg->memory.high);
@@ -2703,7 +2709,8 @@ done_restock:
 				current->memcg_nr_pages_over_high += MAX_RECLAIM_OFFLOAD;
 				set_notify_resume(current);
 			} else {
-				schedule_work_on(FASTSWAP_RECLAIM_CPU, &memcg->high_work);
+				rand = get_random_u32() % 4;
+				schedule_work_on(FASTSWAP_RECLAIM_CPU+rand, &memcg->high_work);
 			}
 
 			break;
@@ -6255,6 +6262,7 @@ static ssize_t memory_high_write(struct kernfs_open_file *of,
 	// unsigned int nr_retries = MAX_RECLAIM_RETRIES;
 	unsigned long high;
 	int err;
+	u32 rand;
 
 	buf = strstrip(buf);
 	err = page_counter_memparse(buf, "max", &high);
@@ -6293,7 +6301,8 @@ static ssize_t memory_high_write(struct kernfs_open_file *of,
 
 	/* concurrent eviction on shrink */
 	memcg_wb_domain_size_changed(memcg);
-	schedule_work_on(FASTSWAP_RECLAIM_CPU, &memcg->high_work);
+	rand = get_random_u32() % 4;
+	schedule_work_on(FASTSWAP_RECLAIM_CPU+rand, &memcg->high_work);
 	return nbytes;
 }
 

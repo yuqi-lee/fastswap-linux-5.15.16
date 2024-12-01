@@ -20,7 +20,7 @@ struct kfifo kfifos_alloc[NUM_KFIFOS_ALLOC];
 EXPORT_SYMBOL(kfifos_alloc);
 struct kfifo kfifos_free[NUM_KFIFOS_FREE];
 EXPORT_SYMBOL(kfifos_free);
-struct kfifo kfifos_reclaim_alloc;
+struct kfifo kfifos_reclaim_alloc[FASTSWAP_RECLAIM_CPU_NUM];
 EXPORT_SYMBOL(kfifos_reclaim_alloc);
 atomic_t num_kfifos_free_fail = ATOMIC_INIT(0);
 EXPORT_SYMBOL(num_kfifos_free_fail);
@@ -72,10 +72,12 @@ SYSCALL_DEFINE1(set_direct_swap_enabled, const char __user *, specialfile)
 		}
 	}
 	
-	ret = kfifo_alloc(&kfifos_reclaim_alloc, sizeof(swp_entry)*PAGES_IN_RECLAIM_KFIFO, GFP_KERNEL);
-	if(unlikely(ret)) {
-		printk("Alloc memory for kfifos_reclaim_alloc failed with error code %d.", ret);
-		return ret;
+	for(i = 0; i < FASTSWAP_RECLAIM_CPU_NUM; i++) {
+		ret = kfifo_alloc(kfifos_reclaim_alloc+i, sizeof(swp_entry)*PAGES_IN_RECLAIM_KFIFO, GFP_KERNEL);
+		if(unlikely(ret)) {
+				printk("Alloc memory for kfifos_reclaim_alloc failed with error code %d.", ret);
+			return ret;
+		}
 	}
 
 
@@ -182,13 +184,15 @@ int direct_swap_alloc_remote_pages(int n_goal, unsigned long entry_size, swp_ent
 	u64 offset;
 	u32 offset_fake;
 	struct swap_info_struct *si = NULL;
-	
+	u32 idx;
+
 	count = 0;
 
 	/*Reclaim CPU path*/
-	if(likely(nproc == FASTSWAP_RECLAIM_CPU)) {
-		while(!kfifo_is_empty(&kfifos_reclaim_alloc) && count < n_goal) {
-			ret = kfifo_out(&kfifos_reclaim_alloc, swp_entries + count, sizeof(swp_entry_t));
+	if(likely(nproc >= FASTSWAP_RECLAIM_CPU && nproc < FASTSWAP_RECLAIM_CPU + FASTSWAP_RECLAIM_CPU_NUM)) {
+		idx = nproc - FASTSWAP_RECLAIM_CPU;
+		while(!kfifo_is_empty(kfifos_reclaim_alloc + idx) && count < n_goal) {
+			ret = kfifo_out(kfifos_reclaim_alloc + idx, swp_entries + count, sizeof(swp_entry_t));
 			if (ret != sizeof(swp_entry_t)) {
           		printk(KERN_ERR "[DirectSwap]: Failed to read remote entry from RECLAIM ALLOC FIFO.\n");
           		break;

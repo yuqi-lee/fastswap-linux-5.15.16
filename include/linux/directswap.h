@@ -9,7 +9,8 @@
 #include <linux/atomic.h>
 #include <linux/kfifo.h>
 
-#define FASTSWAP_RECLAIM_CPU 30
+#define FASTSWAP_RECLAIM_CPU 28
+#define FASTSWAP_RECLAIM_CPU_NUM 4
 
 #define NUM_REMOTE_SWAP_AREA 1
 #define NUM_PAGES_PER_REMOTE_SWAP_AREA (16 << 20)
