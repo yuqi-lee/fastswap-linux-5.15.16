@@ -101,14 +101,14 @@ int allocator_page_queue_init(void) {
     }
     // return 0;
 
-    queue_allocator = (struct allocator_page_queue *) vmap(pages_, addr_space_->nrpages, VM_MAP, PAGE_KERNEL);
-    if(queue_allocator == NULL) {
+    queues_allocator = (struct allocator_page_queues *) vmap(pages_, addr_space_->nrpages, VM_MAP, PAGE_KERNEL);
+    if(queues_allocator == NULL) {
         pr_err("Bad v-mapping for allocator_page_queue\n");
         kfree(pages_);
         return -1;
     }
 
-    pr_info("allocator_page_queue address is %p\n", (void*)queue_allocator);
+    pr_info("allocator_page_queue address is %p\n", (void*)queues_allocator);
 
     kfree(pages_);
     return 0;
@@ -160,14 +160,14 @@ int deallocator_page_queue_init(void) {
     }
     // return 0;
 
-    queue_deallocator = (struct deallocator_page_queue *) vmap(pages_, addr_space_->nrpages, VM_MAP, PAGE_KERNEL);
-    if(queue_deallocator == NULL) {
+    queues_deallocator = (struct deallocator_page_queues *) vmap(pages_, addr_space_->nrpages, VM_MAP, PAGE_KERNEL);
+    if(queues_deallocator == NULL) {
         pr_err("Bad v-mapping for deallocator_page_queue\n");
         kfree(pages_);
         return -1;
     }
 
-    pr_info("deallocator_page_queue address is %p\n", (void*)queue_deallocator);
+    pr_info("deallocator_page_queue address is %p\n", (void*)queues_deallocator);
 
     kfree(pages_);
     return 0;
@@ -487,7 +487,7 @@ inline int remote_area_id(int type)
 EXPORT_SYMBOL(remote_area_id);
 
 uint64_t get_length_allocator(uint32_t id) {
-    struct allocator_page_queue *queue_allocator = &queues_allocator->queues[id];
+    struct allocator_page_queue *queue_allocator = &(queues_allocator->queues[id]);
     uint64_t begin = atomic64_read(&queue_allocator->begin);
     uint64_t end = atomic64_read(&queue_allocator->end);
     if (begin == end) {
@@ -502,7 +502,7 @@ uint64_t get_length_allocator(uint32_t id) {
 EXPORT_SYMBOL(get_length_allocator);
 
 uint64_t get_length_reclaim_allocator(uint32_t id) {
-    struct reclaim_allocator_page_queue *queue_allocator = &queues_allocator->reclaim_queues[id];
+    struct reclaim_allocator_page_queue *queue_allocator = &(queues_allocator->reclaim_queues[id]);
     uint64_t begin = atomic64_read(&queue_allocator->begin);
     uint64_t end = atomic64_read(&queue_allocator->end);
     if (begin == end) {
@@ -519,7 +519,7 @@ EXPORT_SYMBOL(get_length_reclaim_allocator);
 uint64_t pop_queue_allocator(uint32_t id) {
     uint64_t ret = 0;
     uint64_t prev_begin;
-	struct allocator_page_queue *queue_allocator = &queues_allocator->queues[id];
+	struct allocator_page_queue *queue_allocator = &(queues_allocator->queues[id]);
     while(get_length_allocator(id) == 0) ;
     prev_begin = atomic64_read(&queue_allocator->begin);
     atomic64_set(&queue_allocator->begin, (prev_begin + 1) % ALLOCATE_BUFFER_SIZE);
@@ -534,7 +534,7 @@ EXPORT_SYMBOL(pop_queue_allocator);
 uint64_t pop_queue_reclaim_allocator(uint32_t id) {
     uint64_t ret = 0;
     uint64_t prev_begin;
-	struct reclaim_allocator_page_queue *queue_allocator = &queues_allocator->reclaim_queues[id];
+	struct reclaim_allocator_page_queue *queue_allocator = &(queues_allocator->reclaim_queues[id]);
     while(get_length_allocator(id) == 0) ;
     prev_begin = atomic64_read(&queue_allocator->begin);
     atomic64_set(&queue_allocator->begin, (prev_begin + 1) % RECLAIM_ALLOCATE_BUFFER_SIZE);
@@ -568,7 +568,7 @@ EXPORT_SYMBOL(get_length_deallocator);
 
 
 int push_queue_deallocator(uint64_t page_addr, uint32_t id) {
-	struct deallocator_page_queue *queue_deallocator = &queues_deallocator->queues[id];
+	struct deallocator_page_queue *queue_deallocator = &(queues_deallocator->queues[id]);
     int ret = 0;
     uint64_t prev_end = atomic64_read(&queue_deallocator->end);
     while(get_length_deallocator(id) >= DEALLOCATE_BUFFER_SIZE - 1) ;
