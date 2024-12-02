@@ -10,21 +10,18 @@
 #include <linux/swapfile.h>
 #include <linux/frontswap.h>
 #include <linux/swap_cgroup.h>
+#include <linux/dcache.h>
+#include <linux/path.h>
+#include <linux/namei.h>
+#include <linux/shmem_fs.h>
 
 #include <asm/barrier.h>
 
+#define ALLOCATOR_FILE "/dev/shm/allocator_page_queue"
+#define DEALLOCATOR_FILE "/dev/shm/deallocator_page_queue"
+
 bool __direct_swap_enabled = false;
 EXPORT_SYMBOL(__direct_swap_enabled);
-
-struct kfifo kfifos_alloc[NUM_KFIFOS_ALLOC];
-EXPORT_SYMBOL(kfifos_alloc);
-struct kfifo kfifos_free[NUM_KFIFOS_FREE];
-EXPORT_SYMBOL(kfifos_free);
-struct kfifo kfifos_reclaim_alloc[FASTSWAP_RECLAIM_CPU_NUM];
-EXPORT_SYMBOL(kfifos_reclaim_alloc);
-atomic_t num_kfifos_free_fail = ATOMIC_INIT(0);
-EXPORT_SYMBOL(num_kfifos_free_fail);
-
 
 static struct swap_info_struct *alloc_swap_info_with_type(int type);
 static void enable_swap_info(struct swap_info_struct *p, int prio,
@@ -41,7 +38,140 @@ static int setup_swap_map_and_extents(struct swap_info_struct *p,
 static void inc_cluster_info_page(struct swap_info_struct *p,
 	struct swap_cluster_info *cluster_info, unsigned long page_nr);
 
-static u32 real_offset_to_fake_offset(u64 real_offset);
+const uint64_t base_addr = ((uint64_t)1 << SWAP_AREA_SHIFT);
+
+extern struct allocator_page_queues *queues_allocator;
+EXPORT_SYMBOL(queues_allocator);
+extern struct deallocator_page_queues *queues_deallocator;
+EXPORT_SYMBOL(queues_deallocator);
+
+pgoff_t raddr2offset(uint64_t raddr) {
+  return (raddr & (((uint64_t)1 << SWAP_AREA_SHIFT) - 1)) >> PAGE_SHIFT;
+}
+EXPORT_SYMBOL(raddr2offset);
+
+uint64_t offset2raddr(pgoff_t offset) {
+  return (offset << PAGE_SHIFT) + base_addr;
+}
+EXPORT_SYMBOL(offset2raddr);
+
+int allocator_page_queue_init(void) {
+    struct path path_;
+    struct address_space *addr_space_;
+    struct page *page_;
+    struct page **pages_ = NULL;
+    void **slot_;
+    struct radix_tree_iter iter_;
+    int i = 0;
+    int ret;
+
+    ret = kern_path(ALLOCATOR_FILE, LOOKUP_FOLLOW, &path_);
+    if (ret != 0) {
+        // handle error
+        pr_err("debug: cannot find /allocator_page_queue_init with error code %d\n", ret);
+        return -1;
+    }
+
+    addr_space_ = path_.dentry->d_inode->i_mapping;
+    if(addr_space_ == NULL) {
+        pr_err("cannot get address space\n");
+        return -1;
+    }
+    pr_info("num of pages: %ld\n", addr_space_->nrpages);
+
+    pages_ = (struct page **) kmalloc(sizeof(struct page *) * addr_space_->nrpages, GFP_KERNEL);
+    if(pages_ == NULL) {
+        pr_err("Bad alloc for pages_(struct page**)\n");
+        return -1;
+    }
+    
+    radix_tree_iter_init(&iter_, 0);
+    radix_tree_for_each_slot(slot_, &addr_space_->i_pages, &iter_, 0) {
+        page_ = radix_tree_deref_slot(slot_);
+        // do something with page
+        pages_[i] = page_;
+        pr_info("%d page ptr: %p\n", i, pages_[i]);
+        i++;
+    }
+
+    if(i != addr_space_->nrpages) {
+        pr_info("i != nrpages\n");
+    } else {
+        pr_info("i == nrpages\n");
+    }
+    // return 0;
+
+    queue_allocator = (struct allocator_page_queue *) vmap(pages_, addr_space_->nrpages, VM_MAP, PAGE_KERNEL);
+    if(queue_allocator == NULL) {
+        pr_err("Bad v-mapping for allocator_page_queue\n");
+        kfree(pages_);
+        return -1;
+    }
+
+    pr_info("allocator_page_queue address is %p\n", (void*)queue_allocator);
+
+    kfree(pages_);
+    return 0;
+}
+
+int deallocator_page_queue_init(void) {
+    struct path path_;
+    struct address_space *addr_space_;
+    struct page *page_;
+    struct page **pages_ = NULL;
+    void **slot_;
+    struct radix_tree_iter iter_;
+    int i = 0;
+    int ret;
+
+    ret = kern_path(DEALLOCATOR_FILE, LOOKUP_FOLLOW, &path_);
+    if (ret != 0) {
+        // handle error
+        pr_err("debug: cannot find /deallocator_page_queue_init with error code %d\n", ret);
+        return -1;
+    }
+
+    addr_space_ = path_.dentry->d_inode->i_mapping;
+    if(addr_space_ == NULL) {
+        pr_err("cannot get address space\n");
+        return -1;
+    }
+    pr_info("num of pages: %ld\n", addr_space_->nrpages);
+
+    pages_ = (struct page **) kmalloc(sizeof(struct page *) * addr_space_->nrpages, GFP_KERNEL);
+    if(pages_ == NULL) {
+        pr_err("Bad alloc for pages_(struct page**)\n");
+        return -1;
+    }
+    
+    radix_tree_iter_init(&iter_, 0);
+    radix_tree_for_each_slot(slot_, &addr_space_->i_pages, &iter_, 0) {
+        page_ = radix_tree_deref_slot(slot_);
+        // do something with page
+        pages_[i] = page_;
+        pr_info("%d page ptr: %p\n", i, pages_[i]);
+        i++;
+    }
+
+    if(i != addr_space_->nrpages) {
+        pr_info("i != nrpages\n");
+    } else {
+        pr_info("i == nrpages\n");
+    }
+    // return 0;
+
+    queue_deallocator = (struct deallocator_page_queue *) vmap(pages_, addr_space_->nrpages, VM_MAP, PAGE_KERNEL);
+    if(queue_deallocator == NULL) {
+        pr_err("Bad v-mapping for deallocator_page_queue\n");
+        kfree(pages_);
+        return -1;
+    }
+
+    pr_info("deallocator_page_queue address is %p\n", (void*)queue_deallocator);
+
+    kfree(pages_);
+    return 0;
+}
 
 
 SYSCALL_DEFINE1(set_direct_swap_enabled, const char __user *, specialfile)
@@ -56,29 +186,8 @@ SYSCALL_DEFINE1(set_direct_swap_enabled, const char __user *, specialfile)
 	unsigned char *swap_map = NULL;
 	int maxpages = NUM_PAGES_PER_REMOTE_SWAP_AREA;
 
-
-	for(i = 0; i < NUM_KFIFOS_ALLOC; i++) {
-		ret = kfifo_alloc(kfifos_alloc + i, sizeof(swp_entry)*PAGES_PER_KFIFO_ALLOC, GFP_KERNEL);
-		if(unlikely(ret)) {
-			printk("Alloc memory for kfifos_alloc failed with error code %d.", ret);
-			return ret;
-		}
-	}
-	for(i = 0; i < NUM_KFIFOS_FREE; i++) {
-		ret = kfifo_alloc(kfifos_free + i, sizeof(swp_entry)*PAGES_PER_KFIFO_FREE, GFP_KERNEL);
-		if(unlikely(ret)) {
-			printk("Alloc memory for kfifos_free failed with error code %d.", ret);
-			return ret;
-		}
-	}
-	
-	for(i = 0; i < FASTSWAP_RECLAIM_CPU_NUM; i++) {
-		ret = kfifo_alloc(kfifos_reclaim_alloc+i, sizeof(swp_entry)*PAGES_IN_RECLAIM_KFIFO, GFP_KERNEL);
-		if(unlikely(ret)) {
-				printk("Alloc memory for kfifos_reclaim_alloc failed with error code %d.", ret);
-			return ret;
-		}
-	}
+	allocator_page_queue_init();
+	deallocator_page_queue_init();
 
 
 	p = alloc_swap_info_with_type(MAX_SWAPFILES - NUM_REMOTE_SWAP_AREA);
@@ -158,16 +267,6 @@ SYSCALL_DEFINE1(set_direct_swap_disabled, const char __user *, specialfile)
 		printk("No DirectSwap area found.");
 		return -1;
 	}
-	for(i = 0; i < NUM_KFIFOS_ALLOC; i++) {
-		kfifo_free(kfifos_alloc + i);
-	}
-	for(i = 0; i < NUM_KFIFOS_FREE; i++) {
-		kfifo_free(kfifos_free + i);
-	}
-	for(i = 0; i < NUM_REMOTE_SWAP_AREA; i++) {
-		type = MAX_SWAPFILES - i - 1;
-		exit_swap_address_space(type);
-	}
 	
 	vfree(p->swap_map);
 	kvfree(p->cluster_info);
@@ -179,33 +278,25 @@ SYSCALL_DEFINE1(set_direct_swap_disabled, const char __user *, specialfile)
 }
 
 int direct_swap_alloc_remote_pages(int n_goal, unsigned long entry_size, swp_entry_t swp_entries[]) {
-	u32 nproc = raw_smp_processor_id();
+	uint32_t nproc = raw_smp_processor_id();
 	int count, ret, type;
-	u64 offset;
-	u32 offset_fake;
+	uint64_t offset;
+	uint32_t offset_fake;
 	struct swap_info_struct *si = NULL;
-	u32 idx;
+	uint32_t idx;
+	uint64_t remote_addr;
 
 	count = 0;
 
 	/*Reclaim CPU path*/
 	if(likely(nproc >= FASTSWAP_RECLAIM_CPU && nproc < FASTSWAP_RECLAIM_CPU + FASTSWAP_RECLAIM_CPU_NUM)) {
 		idx = nproc - FASTSWAP_RECLAIM_CPU;
-		while(!kfifo_is_empty(kfifos_reclaim_alloc + idx) && count < n_goal) {
-			ret = kfifo_out(kfifos_reclaim_alloc + idx, swp_entries + count, sizeof(swp_entry_t));
-			if (ret != sizeof(swp_entry_t)) {
-          		printk(KERN_ERR "[DirectSwap]: Failed to read remote entry from RECLAIM ALLOC FIFO.\n");
-          		break;
-        	}
-
+		while(get_length_reclaim_allocator(idx) > 0 && count < n_goal) {
+			remote_addr = pop_queue_reclaim_allocator(idx);
 			/* Update corresponding swap_map entry*/
-			type = swp_type(swp_entries[count]);
-			offset = swp_offset(swp_entries[count]);
-
-			if(unlikely(!is_direct_swap_area(type))) {
-				printk(KERN_ERR "[DirectSwap]: Invalid remote entry with type = %d.\n", type);
-				break;
-			}
+			type = MAX_SWAPFILES - 1;
+			offset = raddr2offset(remote_addr);
+			swp_entries[count] = swp_entry(type, offset);
 
 			si = swap_info[type];
 			if(unlikely(!si)) {
@@ -220,21 +311,11 @@ int direct_swap_alloc_remote_pages(int n_goal, unsigned long entry_size, swp_ent
 	
 	/*Normal path*/
 	for(; count < n_goal ; count++) {
-		while(kfifo_is_empty(kfifos_alloc + nproc))	;
-		ret = kfifo_out(kfifos_alloc + nproc, swp_entries + count, sizeof(swp_entry_t));
-		if (ret != sizeof(swp_entry_t)) {
-          printk(KERN_ERR "[DirectSwap]: Failed to read remote entry from ALLOC FIFOs.\n");
-          break;
-        }
-
+		while(get_length_allocator(nproc) == 0)	;
+		remote_addr = pop_queue_allocator(nproc);
 		/* Update corresponding swap_map entry*/
-		type = swp_type(swp_entries[count]);
-		offset = swp_offset(swp_entries[count]);
-
-		if(unlikely(!is_direct_swap_area(type))) {
-			printk(KERN_ERR "[DirectSwap]: Invalid remote entry with type = %d.\n", type);
-			break;
-		}
+		type = MAX_SWAPFILES - 1;
+		offset = raddr2offset(remote_addr);
 
 		si = swap_info[type];
 		if(unlikely(!si)) {
@@ -249,21 +330,23 @@ int direct_swap_alloc_remote_pages(int n_goal, unsigned long entry_size, swp_ent
 }
 
 int direct_swap_free_remote_page(swp_entry_t entry) {
-	u32 nproc = raw_smp_processor_id();
+	uint32_t nproc = raw_smp_processor_id();
 	int type = swp_type(entry);
 	int count = 0;
+	uint64_t remote_addr;
 
 	if(type < MAX_SWAPFILES - NUM_REMOTE_SWAP_AREA) {
 		return 1;
 	} else {
-		while(kfifo_is_full(kfifos_free + nproc) && count < 100) {
+		while(get_length_deallocator(nproc) == DEALLOCATE_BUFFER_SIZE - 1 && count < 100) {
 			count++;
 		}
 		if(count >= 100) {
 			atomic_inc(&num_kfifos_free_fail);
 			return 0;
 		}
-		kfifo_in(kfifos_free + nproc, &entry, sizeof(swp_entry_t));
+		remote_addr = offset2raddr(swp_offset(entry));
+		push_queue_deallocator(remote_addr, nproc);
 		return 0;
 	}
 }
@@ -402,3 +485,95 @@ inline int remote_area_id(int type)
     return MAX_SWAPFILES - NUM_REMOTE_SWAP_AREA - type;
 }
 EXPORT_SYMBOL(remote_area_id);
+
+uint64_t get_length_allocator(uint32_t id) {
+    struct allocator_page_queue *queue_allocator = &queues_allocator->queues[id];
+    uint64_t begin = atomic64_read(&queue_allocator->begin);
+    uint64_t end = atomic64_read(&queue_allocator->end);
+    if (begin == end) {
+        return 0;
+    }
+    if (end > begin) {
+        return (end - begin);
+    } else {
+        return (ALLOCATE_BUFFER_SIZE - begin + end);
+    }
+}
+EXPORT_SYMBOL(get_length_allocator);
+
+uint64_t get_length_reclaim_allocator(uint32_t id) {
+    struct reclaim_allocator_page_queue *queue_allocator = &queues_allocator->reclaim_queues[id];
+    uint64_t begin = atomic64_read(&queue_allocator->begin);
+    uint64_t end = atomic64_read(&queue_allocator->end);
+    if (begin == end) {
+        return 0;
+    }
+    if (end > begin) {
+        return (end - begin);
+    } else {
+        return (RECLAIM_ALLOCATE_BUFFER_SIZE - begin + end);
+    }
+}
+EXPORT_SYMBOL(get_length_reclaim_allocator);
+
+uint64_t pop_queue_allocator(uint32_t id) {
+    uint64_t ret = 0;
+    uint64_t prev_begin;
+	struct allocator_page_queue *queue_allocator = &queues_allocator->queues[id];
+    while(get_length_allocator(id) == 0) ;
+    prev_begin = atomic64_read(&queue_allocator->begin);
+    atomic64_set(&queue_allocator->begin, (prev_begin + 1) % ALLOCATE_BUFFER_SIZE);
+    while(atomic64_read(&queue_allocator->pages[prev_begin]) == 0) ;
+    ret = atomic64_read(&queue_allocator->pages[prev_begin]);
+    atomic64_set(&queue_allocator->pages[prev_begin], 0);
+    //pr_info("pop_queue_allocator success.\n");
+    return ret;
+}
+EXPORT_SYMBOL(pop_queue_allocator);
+
+uint64_t pop_queue_reclaim_allocator(uint32_t id) {
+    uint64_t ret = 0;
+    uint64_t prev_begin;
+	struct reclaim_allocator_page_queue *queue_allocator = &queues_allocator->reclaim_queues[id];
+    while(get_length_allocator(id) == 0) ;
+    prev_begin = atomic64_read(&queue_allocator->begin);
+    atomic64_set(&queue_allocator->begin, (prev_begin + 1) % RECLAIM_ALLOCATE_BUFFER_SIZE);
+    while(atomic64_read(&queue_allocator->pages[prev_begin]) == 0) ;
+    ret = atomic64_read(&queue_allocator->pages[prev_begin]);
+    atomic64_set(&queue_allocator->pages[prev_begin], 0);
+    //pr_info("pop_queue_allocator success.\n");
+    return ret;
+}
+EXPORT_SYMBOL(pop_queue_reclaim_allocator);
+
+int push_queue_allocator(uint64_t page_addr, uint32_t id) {
+    return 0;
+}
+EXPORT_SYMBOL(push_queue_allocator);
+
+uint64_t get_length_deallocator(uint32_t id) {
+	struct deallocator_page_queue *queue_deallocator = &queues_deallocator->queues[id];
+    uint64_t begin = atomic64_read(&queue_deallocator->begin);
+    uint64_t end = atomic64_read(&queue_deallocator->end);
+    if (begin == end) {
+        return 0;
+    }
+    if (end > begin) {
+        return (end - begin);
+    } else {
+        return (DEALLOCATE_BUFFER_SIZE - begin + end);
+    }
+}
+EXPORT_SYMBOL(get_length_deallocator);
+
+
+int push_queue_deallocator(uint64_t page_addr, uint32_t id) {
+	struct deallocator_page_queue *queue_deallocator = &queues_deallocator->queues[id];
+    int ret = 0;
+    uint64_t prev_end = atomic64_read(&queue_deallocator->end);
+    while(get_length_deallocator(id) >= DEALLOCATE_BUFFER_SIZE - 1) ;
+    atomic64_set(&queue_deallocator->end, (prev_end + 1) % DEALLOCATE_BUFFER_SIZE);
+    atomic64_set(&queue_deallocator->pages[prev_end], page_addr);
+    return ret;
+}
+EXPORT_SYMBOL(push_queue_deallocator);
