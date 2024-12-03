@@ -280,6 +280,13 @@ SYSCALL_DEFINE1(set_direct_swap_disabled, const char __user *, specialfile)
 	return 0;
 }
 
+static inline void direct_swap_range_alloc(struct swap_info_struct *si, unsigned int nr_entries) {
+	si->inuse_pages += nr_entries;
+	if (si->inuse_pages == si->pages) {
+		del_from_avail_list(si);
+	}
+}
+
 int direct_swap_alloc_remote_pages(int n_goal, unsigned long entry_size, swp_entry_t swp_entries[]) {
 	uint32_t nproc = raw_smp_processor_id();
 	int count, ret, type;
@@ -308,6 +315,7 @@ int direct_swap_alloc_remote_pages(int n_goal, unsigned long entry_size, swp_ent
 			}
 			//offset_fake = real_offset_to_fake_offset(offset);
 			WRITE_ONCE(si->swap_map[offset], SWAP_HAS_CACHE);
+			direct_swap_range_alloc(si, 1);
 			count++;
 		}
 	}
@@ -328,6 +336,7 @@ int direct_swap_alloc_remote_pages(int n_goal, unsigned long entry_size, swp_ent
 		}
 		//offset_fake = real_offset_to_fake_offset(offset);
 		WRITE_ONCE(si->swap_map[offset], SWAP_HAS_CACHE);
+		direct_swap_range_alloc(si, 1);
 	}
 	
 	return count;
