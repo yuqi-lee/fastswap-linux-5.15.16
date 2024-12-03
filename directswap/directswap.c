@@ -40,9 +40,12 @@ static void inc_cluster_info_page(struct swap_info_struct *p,
 
 const uint64_t base_addr = ((uint64_t)1 << SWAP_AREA_SHIFT);
 
-extern struct allocator_page_queues *queues_allocator;
+atomic_t num_kfifos_free_fail = ATOMIC_INIT(0);
+EXPORT_SYMBOL(num_kfifos_free_fail);
+
+struct allocator_page_queues *queues_allocator;
 EXPORT_SYMBOL(queues_allocator);
-extern struct deallocator_page_queues *queues_deallocator;
+struct deallocator_page_queues *queues_deallocator;
 EXPORT_SYMBOL(queues_deallocator);
 
 pgoff_t raddr2offset(uint64_t raddr) {
@@ -316,6 +319,7 @@ int direct_swap_alloc_remote_pages(int n_goal, unsigned long entry_size, swp_ent
 		/* Update corresponding swap_map entry*/
 		type = MAX_SWAPFILES - 1;
 		offset = raddr2offset(remote_addr);
+		swp_entries[count] = swp_entry(type, offset);
 
 		si = swap_info[type];
 		if(unlikely(!si)) {
@@ -535,7 +539,7 @@ uint64_t pop_queue_reclaim_allocator(uint32_t id) {
     uint64_t ret = 0;
     uint64_t prev_begin;
 	struct reclaim_allocator_page_queue *queue_allocator = &(queues_allocator->reclaim_queues[id]);
-    while(get_length_allocator(id) == 0) ;
+    while(get_length_reclaim_allocator(id) == 0) ;
     prev_begin = atomic64_read(&queue_allocator->begin);
     atomic64_set(&queue_allocator->begin, (prev_begin + 1) % RECLAIM_ALLOCATE_BUFFER_SIZE);
     while(atomic64_read(&queue_allocator->pages[prev_begin]) == 0) ;

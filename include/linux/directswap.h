@@ -100,7 +100,7 @@ extern uint64_t get_length_reclaim_allocator(uint32_t id);
 extern uint64_t pop_queue_reclaim_allocator(uint32_t id);
 extern int push_queue_reclaim_allocator(uint64_t page_addr, uint32_t id);
 
-pgoff_t raddr2offset(uint64_t raddr);
-uint64_t offset2raddr(pgoff_t offset);
+extern pgoff_t raddr2offset(uint64_t raddr);
+extern uint64_t offset2raddr(pgoff_t offset);
 
 #endif /* _LINUX_DIRECTSWAP_H */
