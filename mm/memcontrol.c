@@ -69,7 +69,7 @@
 #include "slab.h"
 
 #include <linux/uaccess.h>
-#include <linux/type.h>
+#include <linux/types.h>
 #include <linux/directswap.h>
 
 #include <trace/events/vmscan.h>

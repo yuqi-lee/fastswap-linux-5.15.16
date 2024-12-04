@@ -8,6 +8,7 @@
 #include <linux/swap.h>
 #include <linux/atomic.h>
 #include <linux/kfifo.h>
+#include <linux/atomic.h>
 
 #define FASTSWAP_RECLAIM_CPU 28
 #define FASTSWAP_RECLAIM_CPU_NUM 4
@@ -25,6 +26,10 @@
 #define SWAP_CLUSTER_COLS						\
 	max_t(unsigned int, SWAP_CLUSTER_INFO_COLS, SWAP_CLUSTER_SPACE_COLS)
 
+#define ALLOCATE_BUFFER_SIZE (4 << 10) // 16 MB
+#define RECLAIM_ALLOCATE_BUFFER_SIZE (16 << 10) // 64 MB
+#define DEALLOCATE_BUFFER_SIZE (16 << 10) // 64 MB
+#define SWAP_AREA_SHIFT 36
 #define NUM_KFIFOS_ALLOC 48
 #define PAGES_PER_KFIFO_ALLOC 256
 #define NUM_KFIFOS_FREE 48
@@ -34,9 +39,6 @@
 
 /* Defined in directswap/directswap.c */
 extern bool __direct_swap_enabled;
-extern struct kfifo kfifos_alloc[NUM_KFIFOS_ALLOC];
-extern struct kfifo kfifos_free[NUM_KFIFOS_FREE];
-extern struct kfifo kfifos_reclaim_alloc;
 extern atomic_t num_kfifos_free_fail;
 
 extern inline bool is_direct_swap_area(int type);
@@ -50,13 +52,55 @@ typedef struct {
     unsigned long val;
 } remote_address_t;
 
+struct allocator_page_queue {
+    atomic_t rkey;
+    atomic64_t begin;
+    atomic64_t end;
+    atomic64_t pages[ALLOCATE_BUFFER_SIZE];
+};
 
-//DEFINE_KFIFO(kfifos_alloc[NUM_KFIFOS_ALLOC], swp_entry_t, PAGES_PER_KFIFO_ALLOC);
-//DEFINE_KFIFO(kfifos_free[NUM_KFIFOS_FREE], swp_entry_t, PAGES_PER_KFIFO_FREE);
+struct reclaim_allocator_page_queue {
+    atomic64_t begin;
+    atomic64_t end;
+    atomic64_t pages[RECLAIM_ALLOCATE_BUFFER_SIZE];
+};
+
+struct deallocator_page_queue {
+    atomic64_t begin;
+    atomic64_t end;
+    atomic64_t pages[DEALLOCATE_BUFFER_SIZE];
+};
+
+struct allocator_page_queues {
+  struct allocator_page_queue queues[NUM_KFIFOS_ALLOC];
+  struct reclaim_allocator_page_queue reclaim_queues[FASTSWAP_RECLAIM_CPU_NUM];
+};
+
+struct deallocator_page_queues {
+  struct deallocator_page_queue queues[NUM_KFIFOS_FREE];
+};
+
+extern struct allocator_page_queues *queues_allocator;
+extern struct deallocator_page_queues *queues_deallocator;
 
 static inline bool direct_swap_enabled(void)
 {
     return __direct_swap_enabled;
 }
+
+extern uint64_t get_length_allocator(uint32_t id);
+extern uint64_t pop_queue_allocator(uint32_t id);
+extern int push_queue_allocator(uint64_t page_addr, uint32_t id);
+
+extern uint64_t get_length_deallocator(uint32_t id);
+extern uint64_t pop_queue_deallocator(uint32_t id);
+extern int push_queue_deallocator(u64 page_addr, uint32_t id);
+
+extern uint64_t get_length_reclaim_allocator(uint32_t id);
+extern uint64_t pop_queue_reclaim_allocator(uint32_t id);
+extern int push_queue_reclaim_allocator(uint64_t page_addr, uint32_t id);
+
+extern pgoff_t raddr2offset(uint64_t raddr);
+extern uint64_t offset2raddr(pgoff_t offset);
 
 #endif /* _LINUX_DIRECTSWAP_H */
