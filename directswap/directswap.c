@@ -282,16 +282,12 @@ SYSCALL_DEFINE1(set_direct_swap_disabled, const char __user *, specialfile)
 
 static inline void direct_swap_range_alloc(struct swap_info_struct *si, unsigned int nr_entries) {
 	si->inuse_pages += nr_entries;
-	if (si->inuse_pages == si->pages) {
-		del_from_avail_list(si);
-	}
 }
 
 int direct_swap_alloc_remote_pages(int n_goal, unsigned long entry_size, swp_entry_t swp_entries[]) {
 	uint32_t nproc = raw_smp_processor_id();
-	int count, ret, type;
+	int count, type;
 	uint64_t offset;
-	uint32_t offset_fake;
 	struct swap_info_struct *si = NULL;
 	uint32_t idx;
 	uint64_t remote_addr;
@@ -313,7 +309,6 @@ int direct_swap_alloc_remote_pages(int n_goal, unsigned long entry_size, swp_ent
 				printk(KERN_ERR "[DirectSwap]: Invalid remote entry with type = %d.\n", type);
 				break;
 			}
-			//offset_fake = real_offset_to_fake_offset(offset);
 			WRITE_ONCE(si->swap_map[offset], SWAP_HAS_CACHE);
 			direct_swap_range_alloc(si, 1);
 			count++;
@@ -334,7 +329,6 @@ int direct_swap_alloc_remote_pages(int n_goal, unsigned long entry_size, swp_ent
 			printk(KERN_ERR "[DirectSwap]: Invalid remote entry with type = %d.\n", type);
 			break;
 		}
-		//offset_fake = real_offset_to_fake_offset(offset);
 		WRITE_ONCE(si->swap_map[offset], SWAP_HAS_CACHE);
 		direct_swap_range_alloc(si, 1);
 	}
@@ -478,13 +472,6 @@ static void setup_swap_info(struct swap_info_struct *p, int prio,
 	p->list.prio = -p->prio;
 	p->swap_map = swap_map;
 	p->cluster_info = cluster_info;
-}
-
-static u32 real_offset_to_fake_offset(u64 real_offset) 
-{
-	u32 fake_offset;
-	fake_offset = (real_offset & ((1 << DIRECT_SWAP_AREA_SHIFT) - 1)) >> 12; //TODO: PAGE_SHIFT
-	return fake_offset;
 }
 
 inline bool is_direct_swap_area(int type)
