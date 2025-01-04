@@ -43,9 +43,9 @@ const uint64_t base_addr = ((uint64_t)1 << SWAP_AREA_SHIFT);
 atomic_t num_kfifos_free_fail = ATOMIC_INIT(0);
 EXPORT_SYMBOL(num_kfifos_free_fail);
 
-struct allocator_page_queues *queues_allocator;
+struct allocator_page_queues *queues_allocator = NULL;
 EXPORT_SYMBOL(queues_allocator);
-struct deallocator_page_queues *queues_deallocator;
+struct deallocator_page_queues *queues_deallocator = NULL;
 EXPORT_SYMBOL(queues_deallocator);
 
 pgoff_t raddr2offset(uint64_t raddr) {
@@ -57,6 +57,39 @@ uint64_t offset2raddr(pgoff_t offset) {
   return (offset << PAGE_SHIFT) + base_addr;
 }
 EXPORT_SYMBOL(offset2raddr);
+
+int allocator_page_queue_init_dram(void) {
+	queues_allocator = (struct allocator_page_queues*)kmalloc(sizeof(struct allocator_page_queues), GFP_KERNEL);
+	for(uint32_t i = 0;i < NUM_KFIFOS_ALLOC; ++i) {
+    	auto queue_allocator = &queues_allocator->queues[i];
+    	queue_allocator->rkey.store(0);
+    	queue_allocator->begin.store(0);
+    	queue_allocator->end.store(0);
+    	for(uint32_t j = 0;j < ALLOCATE_BUFFER_SIZE; ++j) {
+      		queue_allocator->pages[j].store(0);
+    	}
+  	}
+  	for(uint32_t i = 0;i < FASTSWAP_RECLAIM_CPU_NUM; ++i) {
+    	auto queue_allocator = &queues_allocator->reclaim_queues[i];
+    	queue_allocator->begin.store(0);
+    	queue_allocator->end.store(0);
+    	for(uint64_t i = 0;i < RECLAIM_ALLOCATE_BUFFER_SIZE; ++i) {
+      		queue_allocator->pages[i].store(0);
+    	}
+  	}
+}
+
+int deallocator_page_queue_init_dram(void) {
+	queues_deallocator = (struct deallocator_page_queues*)kmalloc(sizeof(struct deallocator_page_queues), GFP_KERNEL);
+	for(uint32_t i = 0;i < NUM_KFIFOS_FREE; ++i) {
+    	auto queue_deallocator = &queues_deallocator->queues[i];
+    	queue_deallocator->begin.store(0);
+    	queue_deallocator->end.store(0);
+    	for(uint64_t i = 0;i < DEALLOCATE_BUFFER_SIZE; ++i) {
+      		queue_deallocator->pages[i].store(0);
+    	}
+  	}
+}
 
 int allocator_page_queue_init(void) {
     struct path path_;
@@ -189,8 +222,11 @@ SYSCALL_DEFINE1(set_direct_swap_enabled, const char __user *, specialfile)
 	unsigned char *swap_map = NULL;
 	int maxpages = NUM_PAGES_PER_REMOTE_SWAP_AREA;
 
-	allocator_page_queue_init();
-	deallocator_page_queue_init();
+	//allocator_page_queue_init();
+	//deallocator_page_queue_init();
+
+	allocator_page_queue_init_dram();
+	deallocator_page_queue_init_dram();
 
 
 	p = alloc_swap_info_with_type(MAX_SWAPFILES - NUM_REMOTE_SWAP_AREA);
@@ -547,9 +583,28 @@ uint64_t pop_queue_reclaim_allocator(uint32_t id) {
 EXPORT_SYMBOL(pop_queue_reclaim_allocator);
 
 int push_queue_allocator(uint64_t page_addr, uint32_t id) {
+    struct allocator_page_queue *queue_allocator = &(queues_allocator->queues[id]);
+    uint64_t prev_end = atomic64_read(&queue_allocator->end);
+
+    while (get_length_allocator(id) >= ALLOCATE_BUFFER_SIZE - 1);
+    atomic64_set(&queue_allocator->end, (prev_end + 1) % ALLOCATE_BUFFER_SIZE);
+    atomic64_set(&queue_allocator->pages[prev_end], page_addr);
+
     return 0;
 }
 EXPORT_SYMBOL(push_queue_allocator);
+
+int push_queue_reclaim_allocator(uint64_t page_addr, uint32_t id) {
+    struct reclaim_allocator_page_queue *queue_allocator = &(queues_allocator->reclaim_queues[id]);
+    uint64_t prev_end = atomic64_read(&queue_allocator->end);;
+
+    while (get_length_reclaim_allocator(id) >= RECLAIM_ALLOCATE_BUFFER_SIZE - 1);
+    atomic64_set(&queue_allocator->end, (prev_end + 1) % RECLAIM_ALLOCATE_BUFFER_SIZE);
+    atomic64_set(&queue_allocator->pages[prev_end], page_addr);
+
+    return 0;
+}
+EXPORT_SYMBOL(push_queue_reclaim_allocator);
 
 uint64_t get_length_deallocator(uint32_t id) {
 	struct deallocator_page_queue *queue_deallocator = &queues_deallocator->queues[id];
@@ -577,3 +632,18 @@ int push_queue_deallocator(uint64_t page_addr, uint32_t id) {
     return ret;
 }
 EXPORT_SYMBOL(push_queue_deallocator);
+
+uint64_t pop_queue_deallocator(uint32_t id) {
+	uint64_t ret = 0;
+    uint64_t prev_begin;
+	struct deallocator_page_queue *queue_deallocator = &(queues_deallocator->queues[id]);
+    while(get_length_deallocator(id) == 0) ;
+    prev_begin = atomic64_read(&queue_deallocator->begin);
+    atomic64_set(&queue_deallocator->begin, (prev_begin + 1) % DEALLOCATE_BUFFER_SIZE);
+    while(atomic64_read(&queue_deallocator->pages[prev_begin]) == 0) ;
+    ret = atomic64_read(&queue_deallocator->pages[prev_begin]);
+    atomic64_set(&queue_deallocator->pages[prev_begin], 0);
+    //pr_info("pop_queue_allocator success.\n");
+    return ret;
+}
+EXPORT_SYMBOL(pop_queue_deallocator);
