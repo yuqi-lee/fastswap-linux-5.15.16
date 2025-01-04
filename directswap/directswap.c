@@ -59,36 +59,49 @@ uint64_t offset2raddr(pgoff_t offset) {
 EXPORT_SYMBOL(offset2raddr);
 
 int allocator_page_queue_init_dram(void) {
-	queues_allocator = (struct allocator_page_queues*)kmalloc(sizeof(struct allocator_page_queues), GFP_KERNEL);
-	for(uint32_t i = 0;i < NUM_KFIFOS_ALLOC; ++i) {
-    	auto queue_allocator = &queues_allocator->queues[i];
-    	queue_allocator->rkey.store(0);
-    	queue_allocator->begin.store(0);
-    	queue_allocator->end.store(0);
-    	for(uint32_t j = 0;j < ALLOCATE_BUFFER_SIZE; ++j) {
-      		queue_allocator->pages[j].store(0);
+	uint32_t i, j;
+	struct allocator_page_queue* queue_allocator;
+	struct reclaim_allocator_page_queue* reclaim_queue_allocator;
+	queues_allocator = (struct allocator_page_queues*)vzalloc(sizeof(struct allocator_page_queues));
+	if(unlikely(!queues_allocator)) {
+		return -1;
+	}
+	for(i = 0;i < NUM_KFIFOS_ALLOC; ++i) {
+    	queue_allocator = &queues_allocator->queues[i];
+    	atomic_set(&queue_allocator->rkey, 0);
+    	atomic64_set(&queue_allocator->begin, 0);
+    	atomic64_set(&queue_allocator->end, 0);
+    	for(j = 0;j < ALLOCATE_BUFFER_SIZE; ++j) {
+      		atomic64_set(&queue_allocator->pages[j], 0);
     	}
   	}
-  	for(uint32_t i = 0;i < FASTSWAP_RECLAIM_CPU_NUM; ++i) {
-    	auto queue_allocator = &queues_allocator->reclaim_queues[i];
-    	queue_allocator->begin.store(0);
-    	queue_allocator->end.store(0);
-    	for(uint64_t i = 0;i < RECLAIM_ALLOCATE_BUFFER_SIZE; ++i) {
-      		queue_allocator->pages[i].store(0);
+  	for(i = 0;i < FASTSWAP_RECLAIM_CPU_NUM; ++i) {
+    	reclaim_queue_allocator = &queues_allocator->reclaim_queues[i];
+    	atomic64_set(&reclaim_queue_allocator->begin, 0);
+    	atomic64_set(&reclaim_queue_allocator->end, 0);
+    	for(j = 0;j < RECLAIM_ALLOCATE_BUFFER_SIZE; ++j) {
+      		atomic64_set(&reclaim_queue_allocator->pages[j], 0);
     	}
   	}
+	return 0;
 }
 
 int deallocator_page_queue_init_dram(void) {
-	queues_deallocator = (struct deallocator_page_queues*)kmalloc(sizeof(struct deallocator_page_queues), GFP_KERNEL);
-	for(uint32_t i = 0;i < NUM_KFIFOS_FREE; ++i) {
-    	auto queue_deallocator = &queues_deallocator->queues[i];
-    	queue_deallocator->begin.store(0);
-    	queue_deallocator->end.store(0);
-    	for(uint64_t i = 0;i < DEALLOCATE_BUFFER_SIZE; ++i) {
-      		queue_deallocator->pages[i].store(0);
+	uint32_t i, j;
+	struct deallocator_page_queue* queue_deallocator;
+	queues_deallocator = (struct deallocator_page_queues*)vzalloc(sizeof(struct deallocator_page_queues));
+	if(unlikely(!queues_deallocator)) {
+		return -1;
+	}
+	for(i = 0;i < NUM_KFIFOS_FREE; ++i) {
+    	queue_deallocator = &queues_deallocator->queues[i];
+    	atomic64_set(&queue_deallocator->begin, 0);
+    	atomic64_set(&queue_deallocator->end, 0);
+    	for(j = 0;j < DEALLOCATE_BUFFER_SIZE; ++j) {
+      		atomic64_set(&queue_deallocator->pages[j], 0);
     	}
   	}
+	return 0;
 }
 
 int allocator_page_queue_init(void) {
