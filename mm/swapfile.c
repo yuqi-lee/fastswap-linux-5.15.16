@@ -714,6 +714,16 @@ static void add_to_avail_list(struct swap_info_struct *p)
 	spin_unlock(&swap_avail_lock);
 }
 
+static void set_direct_swap_partition(struct swap_info_struct *p)
+{
+	int id = (int)p->type;
+	__partition_is_direct_swap[id] = true;
+	if(__direct_swap_type == -1) {
+		__direct_swap_type = id;
+	}
+	pr_info("Register a directswap partition with id = %d", id);
+}
+
 static void swap_range_free(struct swap_info_struct *si, unsigned long offset,
 			    unsigned int nr_entries)
 {
@@ -725,7 +735,7 @@ static void swap_range_free(struct swap_info_struct *si, unsigned long offset,
 
 	if(is_direct_swap) {
 		while(offset_direct_swap <= end) {
-			direct_swap_free_remote_page(swp_entry(si->type, offset));
+			direct_swap_free_remote_page(swp_entry(si->type, offset_direct_swap));
 			offset_direct_swap++;
 		}
 	}
@@ -2461,7 +2471,9 @@ static void setup_swap_info(struct swap_info_struct *p, int prio,
 {
 	int i;
 
-	if (prio >= 0)
+	if(prio = 999) { //[DirectSwap]: this is a DirectSwap partition
+		p->prio = -999;
+	} else if (prio >= 0)
 		p->prio = prio;
 	else
 		p->prio = --least_priority;
@@ -2482,6 +2494,11 @@ static void setup_swap_info(struct swap_info_struct *p, int prio,
 	}
 	p->swap_map = swap_map;
 	p->cluster_info = cluster_info;
+
+	//[DirectSwap]: this is a DirectSwap partition
+	if (prio == 999) {
+		set_direct_swap_partition(p);
+	}
 }
 
 static void _enable_swap_info(struct swap_info_struct *p)
