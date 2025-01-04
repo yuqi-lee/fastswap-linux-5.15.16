@@ -23,6 +23,12 @@
 bool __direct_swap_enabled = false;
 EXPORT_SYMBOL(__direct_swap_enabled);
 
+bool __partition_is_direct_swap[MAX_SWAPFILES];
+EXPORT_SYMBOL(__partition_is_direct_swap);
+
+int __direct_swap_type = -1;
+EXPORT_SYMBOL(__direct_swap_type);
+
 static struct swap_info_struct *alloc_swap_info_with_type(int type);
 static void enable_swap_info(struct swap_info_struct *p, int prio,
 				unsigned char *swap_map,
@@ -64,6 +70,7 @@ int allocator_page_queue_init_dram(void) {
 	struct reclaim_allocator_page_queue* reclaim_queue_allocator;
 	queues_allocator = (struct allocator_page_queues*)vzalloc(sizeof(struct allocator_page_queues));
 	if(unlikely(!queues_allocator)) {
+		pr_err("Bad vzalloc for allocator_page_queue\n");
 		return -1;
 	}
 	for(i = 0;i < NUM_KFIFOS_ALLOC; ++i) {
@@ -91,6 +98,7 @@ int deallocator_page_queue_init_dram(void) {
 	struct deallocator_page_queue* queue_deallocator;
 	queues_deallocator = (struct deallocator_page_queues*)vzalloc(sizeof(struct deallocator_page_queues));
 	if(unlikely(!queues_deallocator)) {
+		pr_err("Bad vzalloc for deallocator_page_queue\n");
 		return -1;
 	}
 	for(i = 0;i < NUM_KFIFOS_FREE; ++i) {
@@ -225,6 +233,7 @@ int deallocator_page_queue_init(void) {
 
 SYSCALL_DEFINE1(set_direct_swap_enabled, const char __user *, specialfile)
 {
+	/*
 	int ret, i, type, prio, error, nr_extents;
 	struct swap_info_struct *p;
 	struct filename *name;
@@ -233,15 +242,20 @@ SYSCALL_DEFINE1(set_direct_swap_enabled, const char __user *, specialfile)
 	//struct address_space *mapping;
 	unsigned long *frontswap_map = NULL;
 	unsigned char *swap_map = NULL;
-	int maxpages = NUM_PAGES_PER_REMOTE_SWAP_AREA;
+	int maxpages = NUM_PAGES_PER_REMOTE_SWAP_AREA;*/
 
 	//allocator_page_queue_init();
 	//deallocator_page_queue_init();
-
+	int i;
+	for(i = 0;i < MAX_SWAPFILES; ++i) {
+		__partition_is_direct_swap[i] = false;
+	}
+	//__partition_is_direct_swap[MAX_SWAPFILES] = true;
 	allocator_page_queue_init_dram();
 	deallocator_page_queue_init_dram();
 
 
+	/*
 	p = alloc_swap_info_with_type(MAX_SWAPFILES - NUM_REMOTE_SWAP_AREA);
 	if (IS_ERR(p)) {
 		printk(KERN_ERR "Allo swap info with specific type failed.");
@@ -301,7 +315,7 @@ SYSCALL_DEFINE1(set_direct_swap_enabled, const char __user *, specialfile)
 		}
 	}
 
-	enable_swap_info(p, prio, swap_map, cluster_info, frontswap_map);
+	enable_swap_info(p, prio, swap_map, cluster_info, frontswap_map);*/
 
  	__direct_swap_enabled = 1;
     printk("DirectSwap enabled successfully.");
@@ -313,7 +327,7 @@ bad_set:
 
 SYSCALL_DEFINE1(set_direct_swap_disabled, const char __user *, specialfile)
 {
-	struct swap_info_struct *p = swap_info[MAX_SWAPFILES - NUM_REMOTE_SWAP_AREA];
+	/*struct swap_info_struct *p = swap_info[MAX_SWAPFILES - NUM_REMOTE_SWAP_AREA];
 	int i, type;
 	if(!p) {
 		printk("No DirectSwap area found.");
@@ -322,7 +336,9 @@ SYSCALL_DEFINE1(set_direct_swap_disabled, const char __user *, specialfile)
 	
 	vfree(p->swap_map);
 	kvfree(p->cluster_info);
-	kvfree(p->frontswap_map);
+	kvfree(p->frontswap_map);*/
+	vfree(queues_allocator);
+	vfree(queues_deallocator);
 
 	__direct_swap_enabled = 0;
 	
@@ -349,7 +365,7 @@ int direct_swap_alloc_remote_pages(int n_goal, unsigned long entry_size, swp_ent
 		while(get_length_reclaim_allocator(idx) > 0 && count < n_goal) {
 			remote_addr = pop_queue_reclaim_allocator(idx);
 			/* Update corresponding swap_map entry*/
-			type = MAX_SWAPFILES - 1;
+			type = __direct_swap_type;
 			offset = raddr2offset(remote_addr);
 			swp_entries[count] = swp_entry(type, offset);
 
@@ -369,7 +385,7 @@ int direct_swap_alloc_remote_pages(int n_goal, unsigned long entry_size, swp_ent
 		while(get_length_allocator(nproc) == 0)	;
 		remote_addr = pop_queue_allocator(nproc);
 		/* Update corresponding swap_map entry*/
-		type = MAX_SWAPFILES - 1;
+		type = __direct_swap_type;
 		offset = raddr2offset(remote_addr);
 		swp_entries[count] = swp_entry(type, offset);
 
@@ -391,15 +407,14 @@ int direct_swap_free_remote_page(swp_entry_t entry) {
 	int count = 0;
 	uint64_t remote_addr;
 
-	if(type < MAX_SWAPFILES - NUM_REMOTE_SWAP_AREA) {
+	if(!is_direct_swap_area(type)) {
 		return 1;
 	} else {
-		while(get_length_deallocator(nproc) == DEALLOCATE_BUFFER_SIZE - 1 && count < 100) {
+		while(get_length_deallocator(nproc) == DEALLOCATE_BUFFER_SIZE - 1 /*&& count < 100*/) {
 			count++;
 		}
 		if(count >= 100) {
-			atomic_inc(&num_kfifos_free_fail);
-			return 0;
+			pr_err("id = %d: direct_swap_free_remote_page waiting too long...", nproc);
 		}
 		remote_addr = offset2raddr(swp_offset(entry));
 		push_queue_deallocator(remote_addr, nproc);
@@ -525,7 +540,7 @@ static void setup_swap_info(struct swap_info_struct *p, int prio,
 
 inline bool is_direct_swap_area(int type)
 {
-    return type >= MAX_SWAPFILES - NUM_REMOTE_SWAP_AREA;
+    return __partition_is_direct_swap[type];
 }
 EXPORT_SYMBOL(is_direct_swap_area);
 

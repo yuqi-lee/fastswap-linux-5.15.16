@@ -39,6 +39,8 @@
 
 /* Defined in directswap/directswap.c */
 extern bool __direct_swap_enabled;
+extern bool __partition_is_direct_swap[MAX_SWAPFILES];
+extern int __direct_swap_type;
 extern atomic_t num_kfifos_free_fail;
 
 extern inline bool is_direct_swap_area(int type);
