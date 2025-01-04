@@ -731,17 +731,12 @@ static void swap_range_free(struct swap_info_struct *si, unsigned long offset,
 			    unsigned int nr_entries)
 {
 	unsigned long begin = offset;
-	unsigned long offset_direct_swap = offset;
+	//unsigned long offset_direct_swap = offset;
 	unsigned long end = offset + nr_entries - 1;
 	void (*swap_slot_free_notify)(struct block_device *, unsigned long);
 	bool is_direct_swap = direct_swap_enabled() && is_direct_swap_area(si->type);
 
-	if(is_direct_swap) {
-		while(offset_direct_swap <= end) {
-			direct_swap_free_remote_page(swp_entry(si->type, offset_direct_swap));
-			offset_direct_swap++;
-		}
-	}
+	
 		
 	if (!is_direct_swap && offset < si->lowest_bit)
 		si->lowest_bit = offset;
@@ -754,7 +749,7 @@ static void swap_range_free(struct swap_info_struct *si, unsigned long offset,
 	}
 	atomic_long_add(nr_entries, &nr_swap_pages);
 	si->inuse_pages -= nr_entries;
-	if (!is_direct_swap && (si->flags & SWP_BLKDEV))
+	if (/*!is_direct_swap &&*/ (si->flags & SWP_BLKDEV))
 		swap_slot_free_notify =
 			si->bdev->bd_disk->fops->swap_slot_free_notify;
 	else
@@ -764,6 +759,9 @@ static void swap_range_free(struct swap_info_struct *si, unsigned long offset,
 		frontswap_invalidate_page(si->type, offset);
 		if (swap_slot_free_notify)
 			swap_slot_free_notify(si->bdev, offset);
+		if(is_direct_swap) 
+			direct_swap_free_remote_page(swp_entry(si->type, offset));
+			
 		offset++;
 	}
 	clear_shadow_from_swap_cache(si->type, begin, end);
@@ -1193,7 +1191,7 @@ static struct swap_info_struct *_swap_info_get(swp_entry_t entry)
 	p = __swap_info_get(entry);
 	if (!p)
 		goto out;
-	if (data_race(!p->swap_map[swp_offset(entry)]) && !is_direct_swap_area(swp_type(entry)))
+	if (data_race(!p->swap_map[swp_offset(entry)])/* && !is_direct_swap_area(swp_type(entry))*/)
 		goto bad_free;
 	return p;
 
