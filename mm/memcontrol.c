@@ -2298,6 +2298,7 @@ static unsigned long reclaim_high(struct mem_cgroup *memcg,
 	return nr_reclaimed;
 }
 
+/*
 #define MAX_RECLAIM_OFFLOAD 2048UL
 static void high_work_func(struct work_struct *work)
 {
@@ -2310,7 +2311,6 @@ static void high_work_func(struct work_struct *work)
 	if (nr_pages > high) {
 		reclaim = min(nr_pages - high, MAX_RECLAIM_OFFLOAD);
 
-		/* reclaim_high only reclaims iff nr_pages > high */
 		reclaim_high(memcg, reclaim, GFP_KERNEL);
 	}
 
@@ -2319,7 +2319,7 @@ static void high_work_func(struct work_struct *work)
 		schedule_work_on(FASTSWAP_RECLAIM_CPU+rand, &memcg->high_work);
 	}
 		
-}
+}*/
 
 /*
  * Clamp the maximum sleep time per allocation batch to 2 seconds. This is
@@ -2696,27 +2696,35 @@ done_restock:
 		curr_mem_pages = page_counter_read(&memcg->memory);
 		high_mem_limit = READ_ONCE(memcg->memory.high);
 
-		mem_high = curr_mem_pages > high_mem_limit; 
+		mem_high =  page_counter_read(&memcg->memory) >
+			READ_ONCE(memcg->memory.high);
 		swap_high = page_counter_read(&memcg->swap) >
 			READ_ONCE(memcg->swap.high);
 
-		if (mem_high) { 
-			excess = curr_mem_pages - high_mem_limit;
+		if (in_interrupt()) {
+			if (mem_high) {
+				schedule_work(&memcg->high_work);
+				break;
+			}
+			continue;
+		}
+
+		//if (mem_high) { 
+		//	excess = curr_mem_pages - high_mem_limit;
 
 			/* regardless of whether we use app cpu or worker, we evict
 			 * at most MAX_RECLAIM_OFFLOAD pages at a time */
-			if (excess > MAX_RECLAIM_OFFLOAD && !in_interrupt()) {
-				current->memcg_nr_pages_over_high += MAX_RECLAIM_OFFLOAD;
-				set_notify_resume(current);
-			} else {
-				rand = get_random_u32() % 4;
-				schedule_work_on(FASTSWAP_RECLAIM_CPU+rand, &memcg->high_work);
-			}
+			//if (excess > MAX_RECLAIM_OFFLOAD && !in_interrupt()) {
+			//	current->memcg_nr_pages_over_high += MAX_RECLAIM_OFFLOAD;
+			//	set_notify_resume(current);
+			//} else {
+			//	schedule_work_on(FASTSWAP_RECLAIM_CPU, &memcg->high_work);
+			//}
 
-			break;
-		}
+		//	break;
+		//}
 
-		if (swap_high) {
+		if (mem_high || swap_high) {
 			// TODO: We left the swap cgroup code in. 
 			// This may prevent expansion of the swap (ie far) memory if we've
 			// given a cgroup limit. Test to make sure this works, because we
@@ -6258,8 +6266,8 @@ static ssize_t memory_high_write(struct kernfs_open_file *of,
 {
 	struct mem_cgroup *memcg = mem_cgroup_from_css(of_css(of));
 	// TODO: Verify that we don't need this drainage. 
-	// bool drained = false;
-	// unsigned int nr_retries = MAX_RECLAIM_RETRIES;
+	bool drained = false;
+	unsigned int nr_retries = MAX_RECLAIM_RETRIES;
 	unsigned long high;
 	int err;
 	u32 rand;
@@ -6276,33 +6284,34 @@ static ssize_t memory_high_write(struct kernfs_open_file *of,
 	// caches. TODO: If we run into problems, then loop until everything is
 	// drained. 
 
-	// for (;;) {
-	// 	unsigned long nr_pages = page_counter_read(&memcg->memory);
-	// 	unsigned long reclaimed;
-	//
-	// 	if (nr_pages <= high)
-	// 		break;
-	//
-	// 	if (signal_pending(current))
-	// 		break;
-	//
-	// 	if (!drained) {
-	// 		drain_all_stock(memcg);
-	// 		drained = true;
-	// 		continue;
-	// 	}
-	//
-	// 	reclaimed = try_to_free_mem_cgroup_pages(memcg, nr_pages - high,
-	// 						 GFP_KERNEL, true);
-	//
-	// 	if (!reclaimed && !nr_retries--)
-	// 		break;
-	// }
+	for (;;) {
+		unsigned long nr_pages = page_counter_read(&memcg->memory);
+		unsigned long reclaimed;
+
+		if (nr_pages <= high)
+			break;
+
+		if (signal_pending(current))
+			break;
+
+		if (!drained) {
+			drain_all_stock(memcg);
+			drained = true;
+			continue;
+		}
+
+		reclaimed = try_to_free_mem_cgroup_pages(memcg, nr_pages - high,
+							 GFP_KERNEL, true);
+
+		if (!reclaimed && !nr_retries--)
+			break;
+	}
+
 
 	/* concurrent eviction on shrink */
-	memcg_wb_domain_size_changed(memcg);
-	rand = get_random_u32() % 4;
-	schedule_work_on(FASTSWAP_RECLAIM_CPU+rand, &memcg->high_work);
+	//memcg_wb_domain_size_changed(memcg);
+	//rand = get_random_u32() % 4;
+	//schedule_work_on(FASTSWAP_RECLAIM_CPU+rand, &memcg->high_work);
 	return nbytes;
 }
 

@@ -82,6 +82,7 @@ int allocator_page_queue_init_dram(void) {
       		atomic64_set(&queue_allocator->pages[j], 0);
     	}
   	}
+	/*
   	for(i = 0;i < FASTSWAP_RECLAIM_CPU_NUM; ++i) {
     	reclaim_queue_allocator = &queues_allocator->reclaim_queues[i];
     	atomic64_set(&reclaim_queue_allocator->begin, 0);
@@ -89,7 +90,7 @@ int allocator_page_queue_init_dram(void) {
     	for(j = 0;j < RECLAIM_ALLOCATE_BUFFER_SIZE; ++j) {
       		atomic64_set(&reclaim_queue_allocator->pages[j], 0);
     	}
-  	}
+  	}*/
 	return 0;
 }
 
@@ -360,11 +361,12 @@ int direct_swap_alloc_remote_pages(int n_goal, unsigned long entry_size, swp_ent
 	count = 0;
 
 	/*Reclaim CPU path*/
+	/*
 	if(likely(nproc >= FASTSWAP_RECLAIM_CPU && nproc < FASTSWAP_RECLAIM_CPU + FASTSWAP_RECLAIM_CPU_NUM)) {
 		idx = nproc - FASTSWAP_RECLAIM_CPU;
 		while(get_length_reclaim_allocator(idx) > 0 && count < n_goal) {
 			remote_addr = pop_queue_reclaim_allocator(idx);
-			/* Update corresponding swap_map entry*/
+			
 			type = __direct_swap_type;
 			offset = raddr2offset(remote_addr);
 			swp_entries[count] = swp_entry(type, offset);
@@ -378,7 +380,7 @@ int direct_swap_alloc_remote_pages(int n_goal, unsigned long entry_size, swp_ent
 			direct_swap_range_alloc(si, 1);
 			count++;
 		}
-	}
+	}*/
 	
 	/*Normal path*/
 	for(; count < n_goal ; count++) {
@@ -544,11 +546,6 @@ inline bool is_direct_swap_area(int type)
 }
 EXPORT_SYMBOL(is_direct_swap_area);
 
-inline int remote_area_id(int type)
-{
-    return MAX_SWAPFILES - NUM_REMOTE_SWAP_AREA - type;
-}
-EXPORT_SYMBOL(remote_area_id);
 
 uint64_t get_length_allocator(uint32_t id) {
     struct allocator_page_queue *queue_allocator = &(queues_allocator->queues[id]);
@@ -565,6 +562,7 @@ uint64_t get_length_allocator(uint32_t id) {
 }
 EXPORT_SYMBOL(get_length_allocator);
 
+/*
 uint64_t get_length_reclaim_allocator(uint32_t id) {
     struct reclaim_allocator_page_queue *queue_allocator = &(queues_allocator->reclaim_queues[id]);
     uint64_t begin = atomic64_read(&queue_allocator->begin);
@@ -578,7 +576,7 @@ uint64_t get_length_reclaim_allocator(uint32_t id) {
         return (RECLAIM_ALLOCATE_BUFFER_SIZE - begin + end);
     }
 }
-EXPORT_SYMBOL(get_length_reclaim_allocator);
+EXPORT_SYMBOL(get_length_reclaim_allocator);*/
 
 uint64_t pop_queue_allocator(uint32_t id) {
     uint64_t ret = 0;
@@ -595,6 +593,7 @@ uint64_t pop_queue_allocator(uint32_t id) {
 }
 EXPORT_SYMBOL(pop_queue_allocator);
 
+/*
 uint64_t pop_queue_reclaim_allocator(uint32_t id) {
     uint64_t ret = 0;
     uint64_t prev_begin;
@@ -608,7 +607,7 @@ uint64_t pop_queue_reclaim_allocator(uint32_t id) {
     //pr_info("pop_queue_allocator success.\n");
     return ret;
 }
-EXPORT_SYMBOL(pop_queue_reclaim_allocator);
+EXPORT_SYMBOL(pop_queue_reclaim_allocator);*/
 
 int push_queue_allocator(uint64_t page_addr, uint32_t id) {
     struct allocator_page_queue *queue_allocator = &(queues_allocator->queues[id]);
@@ -622,6 +621,7 @@ int push_queue_allocator(uint64_t page_addr, uint32_t id) {
 }
 EXPORT_SYMBOL(push_queue_allocator);
 
+/*
 int push_queue_reclaim_allocator(uint64_t page_addr, uint32_t id) {
     struct reclaim_allocator_page_queue *queue_allocator = &(queues_allocator->reclaim_queues[id]);
     uint64_t prev_end = atomic64_read(&queue_allocator->end);;
@@ -632,7 +632,7 @@ int push_queue_reclaim_allocator(uint64_t page_addr, uint32_t id) {
 
     return 0;
 }
-EXPORT_SYMBOL(push_queue_reclaim_allocator);
+EXPORT_SYMBOL(push_queue_reclaim_allocator);*/
 
 uint64_t get_length_deallocator(uint32_t id) {
 	struct deallocator_page_queue *queue_deallocator = &queues_deallocator->queues[id];

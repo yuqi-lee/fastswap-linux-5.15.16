@@ -10,12 +10,11 @@
 #include <linux/kfifo.h>
 #include <linux/atomic.h>
 
-#define FASTSWAP_RECLAIM_CPU 28
-#define FASTSWAP_RECLAIM_CPU_NUM 4
+//#define FASTSWAP_RECLAIM_CPU 28
+//#define FASTSWAP_RECLAIM_CPU_NUM 4
 
-#define NUM_REMOTE_SWAP_AREA 1
-#define NUM_PAGES_PER_REMOTE_SWAP_AREA (16 << 20)
-#define DIRECT_SWAP_PRIORITY -999
+//#define NUM_REMOTE_SWAP_AREA 1
+//#define NUM_PAGES_PER_REMOTE_SWAP_AREA (16 << 20)
 
 // Originally defined in mm/swapfile.c
 #define SWAPFILE_CLUSTER	256 // If huge page swapping is enabled, set to HPAGE_PMD_NR
@@ -29,7 +28,7 @@
 #define ALLOCATE_BUFFER_SIZE (4 << 10) // 16 MB
 #define RECLAIM_ALLOCATE_BUFFER_SIZE (16 << 10) // 64 MB
 #define DEALLOCATE_BUFFER_SIZE (16 << 10) // 64 MB
-#define SWAP_AREA_SHIFT 36
+#define SWAP_AREA_SHIFT 35
 #define NUM_KFIFOS_ALLOC 48
 #define PAGES_PER_KFIFO_ALLOC 256
 #define NUM_KFIFOS_FREE 48
@@ -44,7 +43,6 @@ extern int __direct_swap_type;
 extern atomic_t num_kfifos_free_fail;
 
 extern inline bool is_direct_swap_area(int type);
-extern inline int remote_area_id(int type);
 
 int direct_swap_alloc_remote_pages(int n_goal, unsigned long entry_size, swp_entry_t swp_entries[]);
 int direct_swap_free_remote_page(swp_entry_t entry);
@@ -75,7 +73,7 @@ struct deallocator_page_queue {
 
 struct allocator_page_queues {
   struct allocator_page_queue queues[NUM_KFIFOS_ALLOC];
-  struct reclaim_allocator_page_queue reclaim_queues[FASTSWAP_RECLAIM_CPU_NUM];
+  //struct reclaim_allocator_page_queue reclaim_queues[FASTSWAP_RECLAIM_CPU_NUM];
 };
 
 struct deallocator_page_queues {
