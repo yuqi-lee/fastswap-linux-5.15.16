@@ -50,6 +50,9 @@ static bool swap_count_continued(struct swap_info_struct *, pgoff_t,
 				 unsigned char);
 static void free_swap_count_continuations(struct swap_info_struct *);
 
+static uint8_t num_current_direct_swap_partition = 0;
+static uint8_t core_id_to_swap_type[NUM_KFIFOS_ALLOC];
+
 DEFINE_SPINLOCK(swap_lock);
 static unsigned int nr_swapfiles;
 atomic_long_t nr_swap_pages;
@@ -718,9 +721,25 @@ static void set_direct_swap_partition(struct swap_info_struct *p)
 {
 	int id = (int)p->type;
 	__partition_is_direct_swap[id] = true;
-	if(__direct_swap_type == -1) {
-		__direct_swap_type = id;
-	}
+	++;
+	if(num_current_direct_swap_partition == 0) {
+		for(int i = 0;i < 12; ++i) {
+			num_current_direct_swap_partition[i] = id;
+		}
+	} else if(num_current_direct_swap_partition == 1) {
+		for(int i = 12;i < 24; ++i) {
+			num_current_direct_swap_partition[i] = id;
+		}
+	} else if(num_current_direct_swap_partition == 2) {
+		for(int i = 24;i < 36; ++i) {
+			num_current_direct_swap_partition[i] = id;
+		}
+	} else if(num_current_direct_swap_partition == 3) {
+		for(int i = 36;i < 48; ++i) {
+			num_current_direct_swap_partition[i] = id;
+		}
+	} 
+	num_current_direct_swap_partition++;
 	pr_info("Register a directswap partition with id = %d", id);
 }
 
@@ -733,12 +752,6 @@ static void swap_range_free(struct swap_info_struct *si, unsigned long offset,
 	void (*swap_slot_free_notify)(struct block_device *, unsigned long);
 	bool is_direct_swap = direct_swap_enabled() && is_direct_swap_area(si->type);
 
-	if(is_direct_swap) {
-		while(offset_direct_swap <= end) {
-			direct_swap_free_remote_page(swp_entry(si->type, offset_direct_swap));
-			offset_direct_swap++;
-		}
-	}
 		
 	if (!is_direct_swap && offset < si->lowest_bit)
 		si->lowest_bit = offset;
@@ -759,6 +772,8 @@ static void swap_range_free(struct swap_info_struct *si, unsigned long offset,
 	while (offset <= end) {
 		arch_swap_invalidate_page(si->type, offset);
 		frontswap_invalidate_page(si->type, offset);
+		if(is_direct_swap)
+			direct_swap_free_remote_page(swp_entry(si->type, offset));
 		if (swap_slot_free_notify)
 			swap_slot_free_notify(si->bdev, offset);
 		offset++;
@@ -1190,7 +1205,7 @@ static struct swap_info_struct *_swap_info_get(swp_entry_t entry)
 	p = __swap_info_get(entry);
 	if (!p)
 		goto out;
-	if (data_race(!p->swap_map[swp_offset(entry)]) && !is_direct_swap_area(swp_type(entry)))
+	if (data_race(!p->swap_map[swp_offset(entry)]) && /*!is_direct_swap_area(swp_type(entry))*/)
 		goto bad_free;
 	return p;
 
@@ -1763,9 +1778,9 @@ int try_to_free_swap(struct page *page)
 	/*
 	* [DirectSwap] No need to free swap 
 	*/
-	entry.val = page_private(page);
-	if(is_direct_swap_area(swp_type(entry)))
-		return 0;
+	//entry.val = page_private(page);
+	//if(is_direct_swap_area(swp_type(entry)))
+	//	return 0;
 
 	/*
 	 * Once hibernation has begun to create its image of memory,
@@ -2471,7 +2486,7 @@ static void setup_swap_info(struct swap_info_struct *p, int prio,
 {
 	int i;
 
-	if(prio = 999) { //[DirectSwap]: this is a DirectSwap partition
+	if(prio == 999) { //[DirectSwap]: this is a DirectSwap partition
 		p->prio = -999;
 	} else if (prio >= 0)
 		p->prio = prio;

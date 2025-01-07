@@ -23,11 +23,11 @@
 bool __direct_swap_enabled = false;
 EXPORT_SYMBOL(__direct_swap_enabled);
 
-bool __partition_is_direct_swap[MAX_SWAPFILES];
+bool __partition_is_direct_swap[32];
 EXPORT_SYMBOL(__partition_is_direct_swap);
 
-int __direct_swap_type = -1;
-EXPORT_SYMBOL(__direct_swap_type);
+//int __direct_swap_type = -1;
+//EXPORT_SYMBOL(__direct_swap_type);
 
 static struct swap_info_struct *alloc_swap_info_with_type(int type);
 static void enable_swap_info(struct swap_info_struct *p, int prio,
@@ -387,7 +387,7 @@ int direct_swap_alloc_remote_pages(int n_goal, unsigned long entry_size, swp_ent
 		while(get_length_allocator(nproc) == 0)	;
 		remote_addr = pop_queue_allocator(nproc);
 		/* Update corresponding swap_map entry*/
-		type = __direct_swap_type;
+		type = core_id_to_swap_type[nproc];
 		offset = raddr2offset(remote_addr);
 		swp_entries[count] = swp_entry(type, offset);
 
