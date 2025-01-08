@@ -51,7 +51,9 @@ static bool swap_count_continued(struct swap_info_struct *, pgoff_t,
 static void free_swap_count_continuations(struct swap_info_struct *);
 
 static uint8_t num_current_direct_swap_partition = 0;
-static uint8_t core_id_to_swap_type[NUM_KFIFOS_ALLOC];
+
+uint8_t core_id_to_swap_type[NUM_KFIFOS_ALLOC];
+EXPORT_SYMBOL_GPL(core_id_to_swap_type);
 
 DEFINE_SPINLOCK(swap_lock);
 static unsigned int nr_swapfiles;
@@ -719,24 +721,24 @@ static void add_to_avail_list(struct swap_info_struct *p)
 
 static void set_direct_swap_partition(struct swap_info_struct *p)
 {
+	int i;
 	int id = (int)p->type;
 	__partition_is_direct_swap[id] = true;
-	++;
 	if(num_current_direct_swap_partition == 0) {
-		for(int i = 0;i < 12; ++i) {
-			num_current_direct_swap_partition[i] = id;
+		for(i = 0;i < 4; ++i) {
+			core_id_to_swap_type[i] = id;
 		}
 	} else if(num_current_direct_swap_partition == 1) {
-		for(int i = 12;i < 24; ++i) {
-			num_current_direct_swap_partition[i] = id;
+		for(i = 4;i < 36; ++i) {
+			core_id_to_swap_type[i] = id;
 		}
 	} else if(num_current_direct_swap_partition == 2) {
-		for(int i = 24;i < 36; ++i) {
-			num_current_direct_swap_partition[i] = id;
+		for(i = 36;i < 40; ++i) {
+			core_id_to_swap_type[i] = id;
 		}
 	} else if(num_current_direct_swap_partition == 3) {
-		for(int i = 36;i < 48; ++i) {
-			num_current_direct_swap_partition[i] = id;
+		for(i = 40;i < 48; ++i) {
+			core_id_to_swap_type[i] = id;
 		}
 	} 
 	num_current_direct_swap_partition++;
@@ -1205,7 +1207,7 @@ static struct swap_info_struct *_swap_info_get(swp_entry_t entry)
 	p = __swap_info_get(entry);
 	if (!p)
 		goto out;
-	if (data_race(!p->swap_map[swp_offset(entry)]) && /*!is_direct_swap_area(swp_type(entry))*/)
+	if (data_race(!p->swap_map[swp_offset(entry)]) /*&& !is_direct_swap_area(swp_type(entry))*/)
 		goto bad_free;
 	return p;
 
@@ -1765,7 +1767,7 @@ bool reuse_swap_page(struct page *page, int *total_map_swapcount)
  */
 int try_to_free_swap(struct page *page)
 {
-	swp_entry_t entry;
+	//swp_entry_t entry;
 
 	VM_BUG_ON_PAGE(!PageLocked(page), page);
 
