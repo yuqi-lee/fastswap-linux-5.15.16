@@ -729,15 +729,15 @@ static void set_direct_swap_partition(struct swap_info_struct *p)
 			core_id_to_swap_type[i] = id;
 		}
 	} else if(num_current_direct_swap_partition == 1) {
-		for(i = 4;i < 36; ++i) {
+		for(i = 4;i < 40; ++i) {
 			core_id_to_swap_type[i] = id;
 		}
 	} else if(num_current_direct_swap_partition == 2) {
-		for(i = 36;i < 40; ++i) {
+		for(i = 40;i < 48; ++i) {
 			core_id_to_swap_type[i] = id;
 		}
 	} else if(num_current_direct_swap_partition == 3) {
-		for(i = 40;i < 48; ++i) {
+		for(i = 48;i < 63; ++i) {
 			core_id_to_swap_type[i] = id;
 		}
 	} 

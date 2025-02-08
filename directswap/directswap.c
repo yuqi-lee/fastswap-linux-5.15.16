@@ -415,7 +415,7 @@ int direct_swap_free_remote_page(swp_entry_t entry) {
 		while(get_length_deallocator(nproc) == DEALLOCATE_BUFFER_SIZE - 1 /*&& count < 100*/) {
 			count++;
 		}
-		if(count >= 100) {
+		if(count >= 10) {
 			pr_err("id = %d: direct_swap_free_remote_page waiting too long...", nproc);
 		}
 		remote_addr = offset2raddr(swp_offset(entry));

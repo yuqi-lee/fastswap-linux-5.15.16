@@ -25,16 +25,12 @@
 #define SWAP_CLUSTER_COLS						\
 	max_t(unsigned int, SWAP_CLUSTER_INFO_COLS, SWAP_CLUSTER_SPACE_COLS)
 
-#define ALLOCATE_BUFFER_SIZE (4 << 10) // 16 MB
+#define ALLOCATE_BUFFER_SIZE (512UL) // 2 MB
 #define RECLAIM_ALLOCATE_BUFFER_SIZE (16 << 10) // 64 MB
 #define DEALLOCATE_BUFFER_SIZE (16 << 10) // 64 MB
 #define SWAP_AREA_SHIFT 35
-#define NUM_KFIFOS_ALLOC 48
-#define PAGES_PER_KFIFO_ALLOC 256
-#define NUM_KFIFOS_FREE 48
-#define PAGES_PER_KFIFO_FREE 20480
-#define PAGES_IN_RECLAIM_KFIFO 1024
-#define DIRECT_SWAP_AREA_SHIFT 35 // 32GiB
+#define NUM_KFIFOS_ALLOC 64
+#define NUM_KFIFOS_FREE 64
 
 /* Defined in directswap/directswap.c */
 extern bool __direct_swap_enabled;
