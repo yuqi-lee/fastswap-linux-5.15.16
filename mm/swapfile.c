@@ -725,21 +725,20 @@ static void set_direct_swap_partition(struct swap_info_struct *p)
 	int id = (int)p->type;
 	__partition_is_direct_swap[id] = true;
 	if(num_current_direct_swap_partition == 0) {
-		for(i = 0;i < 4; ++i) {
+		for(i = 0;i < 64; ++i) {
 			core_id_to_swap_type[i] = id;
 		}
-	} else if(num_current_direct_swap_partition == 1) {
-		for(i = 4;i < 40; ++i) {
-			core_id_to_swap_type[i] = id;
+		p->fq = (struct free_idx_queue *)vzalloc(sizeof(struct free_idx_queue));
+		p->fq->capacity = p->pages;
+		p->fq->pages = (uint64_t *)vzalloc(sizeof(uint64_t) * p->pages);
+		for(i = 0;i < p->pages; ++i) {
+			p->fq->pages[i] = p->pages - 1 - i;
 		}
-	} else if(num_current_direct_swap_partition == 2) {
-		for(i = 40;i < 48; ++i) {
-			core_id_to_swap_type[i] = id;
-		}
-	} else if(num_current_direct_swap_partition == 3) {
-		for(i = 48;i < 63; ++i) {
-			core_id_to_swap_type[i] = id;
-		}
+		p->fq->begin = 0;
+		p->fq->end = 0;
+		p->fq->num = p->fq->capacity;
+		global_fq = p->fq;
+		spin_lock_init(&global_fq->lock);
 	} 
 	num_current_direct_swap_partition++;
 	pr_info("Register a directswap partition with id = %d", id);

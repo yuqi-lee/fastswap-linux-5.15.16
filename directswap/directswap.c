@@ -17,8 +17,6 @@
 
 #include <asm/barrier.h>
 
-#define ALLOCATOR_FILE "/dev/shm/allocator_page_queue"
-#define DEALLOCATOR_FILE "/dev/shm/deallocator_page_queue"
 
 bool __direct_swap_enabled = false;
 EXPORT_SYMBOL(__direct_swap_enabled);
@@ -51,8 +49,9 @@ EXPORT_SYMBOL(num_kfifos_free_fail);
 
 struct allocator_page_queues *queues_allocator = NULL;
 EXPORT_SYMBOL(queues_allocator);
-struct deallocator_page_queues *queues_deallocator = NULL;
-EXPORT_SYMBOL(queues_deallocator);
+
+struct free_idx_queue *global_fq = NULL;
+EXPORT_SYMBOL(global_fq);
 
 pgoff_t raddr2offset(uint64_t raddr) {
   return (raddr & (((uint64_t)1 << SWAP_AREA_SHIFT) - 1)) >> PAGE_SHIFT;
@@ -64,259 +63,24 @@ uint64_t offset2raddr(pgoff_t offset) {
 }
 EXPORT_SYMBOL(offset2raddr);
 
-int allocator_page_queue_init_dram(void) {
-	uint32_t i, j;
-	struct allocator_page_queue* queue_allocator;
-	struct reclaim_allocator_page_queue* reclaim_queue_allocator;
-	queues_allocator = (struct allocator_page_queues*)vzalloc(sizeof(struct allocator_page_queues));
-	if(unlikely(!queues_allocator)) {
-		pr_err("Bad vzalloc for allocator_page_queue\n");
-		return -1;
-	}
-	for(i = 0;i < NUM_KFIFOS_ALLOC; ++i) {
-    	queue_allocator = &queues_allocator->queues[i];
-    	atomic_set(&queue_allocator->rkey, 0);
-    	atomic64_set(&queue_allocator->begin, 0);
-    	atomic64_set(&queue_allocator->end, 0);
-    	for(j = 0;j < ALLOCATE_BUFFER_SIZE; ++j) {
-      		atomic64_set(&queue_allocator->pages[j], 0);
-    	}
-  	}
-	/*
-  	for(i = 0;i < FASTSWAP_RECLAIM_CPU_NUM; ++i) {
-    	reclaim_queue_allocator = &queues_allocator->reclaim_queues[i];
-    	atomic64_set(&reclaim_queue_allocator->begin, 0);
-    	atomic64_set(&reclaim_queue_allocator->end, 0);
-    	for(j = 0;j < RECLAIM_ALLOCATE_BUFFER_SIZE; ++j) {
-      		atomic64_set(&reclaim_queue_allocator->pages[j], 0);
-    	}
-  	}*/
-	return 0;
-}
-
-int deallocator_page_queue_init_dram(void) {
-	uint32_t i, j;
-	struct deallocator_page_queue* queue_deallocator;
-	queues_deallocator = (struct deallocator_page_queues*)vzalloc(sizeof(struct deallocator_page_queues));
-	if(unlikely(!queues_deallocator)) {
-		pr_err("Bad vzalloc for deallocator_page_queue\n");
-		return -1;
-	}
-	for(i = 0;i < NUM_KFIFOS_FREE; ++i) {
-    	queue_deallocator = &queues_deallocator->queues[i];
-    	atomic64_set(&queue_deallocator->begin, 0);
-    	atomic64_set(&queue_deallocator->end, 0);
-    	for(j = 0;j < DEALLOCATE_BUFFER_SIZE; ++j) {
-      		atomic64_set(&queue_deallocator->pages[j], 0);
-    	}
-  	}
-	return 0;
-}
-
-int allocator_page_queue_init(void) {
-    struct path path_;
-    struct address_space *addr_space_;
-    struct page *page_;
-    struct page **pages_ = NULL;
-    void **slot_;
-    struct radix_tree_iter iter_;
-    int i = 0;
-    int ret;
-
-    ret = kern_path(ALLOCATOR_FILE, LOOKUP_FOLLOW, &path_);
-    if (ret != 0) {
-        // handle error
-        pr_err("debug: cannot find /allocator_page_queue_init with error code %d\n", ret);
-        return -1;
-    }
-
-    addr_space_ = path_.dentry->d_inode->i_mapping;
-    if(addr_space_ == NULL) {
-        pr_err("cannot get address space\n");
-        return -1;
-    }
-    pr_info("num of pages: %ld\n", addr_space_->nrpages);
-
-    pages_ = (struct page **) kmalloc(sizeof(struct page *) * addr_space_->nrpages, GFP_KERNEL);
-    if(pages_ == NULL) {
-        pr_err("Bad alloc for pages_(struct page**)\n");
-        return -1;
-    }
-    
-    radix_tree_iter_init(&iter_, 0);
-    radix_tree_for_each_slot(slot_, &addr_space_->i_pages, &iter_, 0) {
-        page_ = radix_tree_deref_slot(slot_);
-        // do something with page
-        pages_[i] = page_;
-        pr_info("%d page ptr: %p\n", i, pages_[i]);
-        i++;
-    }
-
-    if(i != addr_space_->nrpages) {
-        pr_info("i != nrpages\n");
-    } else {
-        pr_info("i == nrpages\n");
-    }
-    // return 0;
-
-    queues_allocator = (struct allocator_page_queues *) vmap(pages_, addr_space_->nrpages, VM_MAP, PAGE_KERNEL);
-    if(queues_allocator == NULL) {
-        pr_err("Bad v-mapping for allocator_page_queue\n");
-        kfree(pages_);
-        return -1;
-    }
-
-    pr_info("allocator_page_queue address is %p\n", (void*)queues_allocator);
-
-    kfree(pages_);
-    return 0;
-}
-
-int deallocator_page_queue_init(void) {
-    struct path path_;
-    struct address_space *addr_space_;
-    struct page *page_;
-    struct page **pages_ = NULL;
-    void **slot_;
-    struct radix_tree_iter iter_;
-    int i = 0;
-    int ret;
-
-    ret = kern_path(DEALLOCATOR_FILE, LOOKUP_FOLLOW, &path_);
-    if (ret != 0) {
-        // handle error
-        pr_err("debug: cannot find /deallocator_page_queue_init with error code %d\n", ret);
-        return -1;
-    }
-
-    addr_space_ = path_.dentry->d_inode->i_mapping;
-    if(addr_space_ == NULL) {
-        pr_err("cannot get address space\n");
-        return -1;
-    }
-    pr_info("num of pages: %ld\n", addr_space_->nrpages);
-
-    pages_ = (struct page **) kmalloc(sizeof(struct page *) * addr_space_->nrpages, GFP_KERNEL);
-    if(pages_ == NULL) {
-        pr_err("Bad alloc for pages_(struct page**)\n");
-        return -1;
-    }
-    
-    radix_tree_iter_init(&iter_, 0);
-    radix_tree_for_each_slot(slot_, &addr_space_->i_pages, &iter_, 0) {
-        page_ = radix_tree_deref_slot(slot_);
-        // do something with page
-        pages_[i] = page_;
-        pr_info("%d page ptr: %p\n", i, pages_[i]);
-        i++;
-    }
-
-    if(i != addr_space_->nrpages) {
-        pr_info("i != nrpages\n");
-    } else {
-        pr_info("i == nrpages\n");
-    }
-    // return 0;
-
-    queues_deallocator = (struct deallocator_page_queues *) vmap(pages_, addr_space_->nrpages, VM_MAP, PAGE_KERNEL);
-    if(queues_deallocator == NULL) {
-        pr_err("Bad v-mapping for deallocator_page_queue\n");
-        kfree(pages_);
-        return -1;
-    }
-
-    pr_info("deallocator_page_queue address is %p\n", (void*)queues_deallocator);
-
-    kfree(pages_);
-    return 0;
-}
 
 
 SYSCALL_DEFINE1(set_direct_swap_enabled, const char __user *, specialfile)
 {
-	/*
-	int ret, i, type, prio, error, nr_extents;
-	struct swap_info_struct *p;
-	struct filename *name;
-	struct file *swap_file = NULL;
-	struct swap_cluster_info *cluster_info = NULL;
-	//struct address_space *mapping;
-	unsigned long *frontswap_map = NULL;
-	unsigned char *swap_map = NULL;
-	int maxpages = NUM_PAGES_PER_REMOTE_SWAP_AREA;*/
-
-	//allocator_page_queue_init();
-	//deallocator_page_queue_init();
-	int i;
+	int i, j;
+	struct allocator_page_queue *q;
 	for(i = 0;i < MAX_SWAPFILES; ++i) {
 		__partition_is_direct_swap[i] = false;
 	}
 	//__partition_is_direct_swap[MAX_SWAPFILES] = true;
-	allocator_page_queue_init_dram();
-	deallocator_page_queue_init_dram();
+	queues_allocator = (struct allocator_page_queues *)vzalloc(sizeof(struct allocator_page_queues));
+	for(i = 0;i < NUM_KFIFOS_ALLOC; ++i) {
+    	q = &queues_allocator->queues[i];
+    	q->num = q->begin = q->end = 0;
+		spin_lock_init(&q->q_lock);
+  	}
 
 
-	/*
-	p = alloc_swap_info_with_type(MAX_SWAPFILES - NUM_REMOTE_SWAP_AREA);
-	if (IS_ERR(p)) {
-		printk(KERN_ERR "Allo swap info with specific type failed.");
-		goto bad_set;
-	}
-		
-	name = getname(specialfile);
-	if (IS_ERR(name)) {
-		error = PTR_ERR(name);
-		name = NULL;
-		printk(KERN_ERR "Name of swap file is invalid.");
-		goto bad_set;
-	}
-
-	swap_file = file_open_name(name, O_RDWR|O_LARGEFILE, 0);
-	if (IS_ERR(swap_file)) {
-		error = PTR_ERR(swap_file);
-		swap_file = NULL;
-		printk(KERN_ERR "Open swap file failed.");
-		goto bad_set;
-	}
-	
-	p->swap_file = swap_file;
-	prio = -1;
-	swap_map = vzalloc(maxpages);
-	if (!swap_map) {
-		error = -ENOMEM;
-		printk(KERN_ERR "Alloc space for swap_map failed.");
-		goto bad_set;
-	}
-
-	error = swap_cgroup_swapon(p->type, maxpages);
-	if (error) {
-		printk(KERN_ERR "Setup swap control group failed.");
-		goto bad_set;
-	}
-
-	nr_extents = setup_swap_map_and_extents(p, swap_map,
-		cluster_info, maxpages);
-	if (unlikely(nr_extents < 0)) {
-		error = nr_extents;
-		printk(KERN_ERR "Setup swap_map and extents failed.");
-		goto bad_set;
-	}
-
-	if (IS_ENABLED(CONFIG_FRONTSWAP))
-	frontswap_map = kvcalloc(BITS_TO_LONGS(maxpages),
-					sizeof(long),
-					GFP_KERNEL);
-
-	for(i = 0; i < NUM_REMOTE_SWAP_AREA; i++) {
-		type = MAX_SWAPFILES - i - 1;
-		ret = init_swap_address_space(type, NUM_PAGES_PER_REMOTE_SWAP_AREA);
-		if(unlikely(ret)) {
-			printk("init remote swap address space failed with error code %d.", ret);
-			return ret;
-		}
-	}
-
-	enable_swap_info(p, prio, swap_map, cluster_info, frontswap_map);*/
 
  	__direct_swap_enabled = 1;
     printk("DirectSwap enabled successfully.");
@@ -328,19 +92,8 @@ bad_set:
 
 SYSCALL_DEFINE1(set_direct_swap_disabled, const char __user *, specialfile)
 {
-	/*struct swap_info_struct *p = swap_info[MAX_SWAPFILES - NUM_REMOTE_SWAP_AREA];
-	int i, type;
-	if(!p) {
-		printk("No DirectSwap area found.");
-		return -1;
-	}
-	
-	vfree(p->swap_map);
-	kvfree(p->cluster_info);
-	kvfree(p->frontswap_map);*/
-	vfree(queues_allocator);
-	vfree(queues_deallocator);
 
+	vfree(queues_allocator);
 	__direct_swap_enabled = 0;
 	
 	return 0;
@@ -359,36 +112,12 @@ int direct_swap_alloc_remote_pages(int n_goal, unsigned long entry_size, swp_ent
 	uint64_t remote_addr;
 
 	count = 0;
-
-	/*Reclaim CPU path*/
-	/*
-	if(likely(nproc >= FASTSWAP_RECLAIM_CPU && nproc < FASTSWAP_RECLAIM_CPU + FASTSWAP_RECLAIM_CPU_NUM)) {
-		idx = nproc - FASTSWAP_RECLAIM_CPU;
-		while(get_length_reclaim_allocator(idx) > 0 && count < n_goal) {
-			remote_addr = pop_queue_reclaim_allocator(idx);
-			
-			type = __direct_swap_type;
-			offset = raddr2offset(remote_addr);
-			swp_entries[count] = swp_entry(type, offset);
-
-			si = swap_info[type];
-			if(unlikely(!si)) {
-				printk(KERN_ERR "[DirectSwap]: Invalid remote entry with type = %d.\n", type);
-				break;
-			}
-			WRITE_ONCE(si->swap_map[offset], SWAP_HAS_CACHE);
-			direct_swap_range_alloc(si, 1);
-			count++;
-		}
-	}*/
 	
 	/*Normal path*/
 	for(; count < n_goal ; count++) {
-		while(get_length_allocator(nproc) == 0)	;
-		remote_addr = pop_queue_allocator(nproc);
+		offset = pop_queue_allocator(nproc);
 		/* Update corresponding swap_map entry*/
 		type = core_id_to_swap_type[nproc];
-		offset = raddr2offset(remote_addr);
 		swp_entries[count] = swp_entry(type, offset);
 
 		si = swap_info[type];
@@ -407,19 +136,12 @@ int direct_swap_free_remote_page(swp_entry_t entry) {
 	uint32_t nproc = raw_smp_processor_id();
 	int type = swp_type(entry);
 	int count = 0;
-	uint64_t remote_addr;
+	uint64_t offset = swp_offset(entry);
 
 	if(!is_direct_swap_area(type)) {
 		return 1;
 	} else {
-		while(get_length_deallocator(nproc) == DEALLOCATE_BUFFER_SIZE - 1 /*&& count < 100*/) {
-			count++;
-		}
-		if(count >= 10) {
-			pr_err("id = %d: direct_swap_free_remote_page waiting too long...", nproc);
-		}
-		remote_addr = offset2raddr(swp_offset(entry));
-		push_queue_deallocator(remote_addr, nproc);
+		push_queue_allocator(offset, nproc);
 		return 0;
 	}
 }
@@ -546,132 +268,74 @@ inline bool is_direct_swap_area(int type)
 }
 EXPORT_SYMBOL(is_direct_swap_area);
 
-
-uint64_t get_length_allocator(uint32_t id) {
-    struct allocator_page_queue *queue_allocator = &(queues_allocator->queues[id]);
-    uint64_t begin = atomic64_read(&queue_allocator->begin);
-    uint64_t end = atomic64_read(&queue_allocator->end);
-    if (begin == end) {
-        return 0;
-    }
-    if (end > begin) {
-        return (end - begin);
-    } else {
-        return (ALLOCATE_BUFFER_SIZE - begin + end);
-    }
+bool refill_allocator(uint64_t *allocator) {
+	int first_chunk_size;
+	spin_lock(&global_fq->lock);
+    if(global_fq->num < REFILL_BATCH_SIZE) {
+		pr_err("no free entries...");
+	}
+	first_chunk_size = min(REFILL_BATCH_SIZE, global_fq->capacity - global_fq->begin);
+	memcpy(allocator, global_fq->pages + global_fq->begin, first_chunk_size * sizeof(uint64_t));
+	if(unlikely(first_chunk_size < REFILL_BATCH_SIZE)) {
+		memcpy(allocator + first_chunk_size, global_fq->pages, (REFILL_BATCH_SIZE - first_chunk_size) * sizeof(uint64_t));
+	}
+	global_fq->begin = (global_fq->begin + REFILL_BATCH_SIZE) % global_fq->capacity;
+	global_fq->num -= REFILL_BATCH_SIZE;
+	spin_unlock(&global_fq->lock);
+    return true;
 }
-EXPORT_SYMBOL(get_length_allocator);
 
-/*
-uint64_t get_length_reclaim_allocator(uint32_t id) {
-    struct reclaim_allocator_page_queue *queue_allocator = &(queues_allocator->reclaim_queues[id]);
-    uint64_t begin = atomic64_read(&queue_allocator->begin);
-    uint64_t end = atomic64_read(&queue_allocator->end);
-    if (begin == end) {
-        return 0;
-    }
-    if (end > begin) {
-        return (end - begin);
-    } else {
-        return (RECLAIM_ALLOCATE_BUFFER_SIZE - begin + end);
-    }
+bool release_allocator(uint64_t *allocator) {
+    int first_chunk_size;
+	spin_lock(&global_fq->lock);
+    if(global_fq->capacity - global_fq->num < REFILL_BATCH_SIZE) {
+		pr_err("no space to hold free entries...");
+	}
+	first_chunk_size = min(REFILL_BATCH_SIZE, global_fq->capacity - global_fq->end);
+	memcpy(global_fq->pages + global_fq->end, allocator, first_chunk_size * sizeof(uint64_t));
+	if(unlikely(first_chunk_size < REFILL_BATCH_SIZE)) {
+		memcpy(global_fq->pages, allocator + first_chunk_size, (REFILL_BATCH_SIZE - first_chunk_size) * sizeof(uint64_t));
+	}
+	global_fq->end = (global_fq->end + REFILL_BATCH_SIZE) % global_fq->capacity;
+	global_fq->num += REFILL_BATCH_SIZE;
+	spin_unlock(&global_fq->lock);
+    return true;
 }
-EXPORT_SYMBOL(get_length_reclaim_allocator);*/
 
 uint64_t pop_queue_allocator(uint32_t id) {
     uint64_t ret = 0;
-    uint64_t prev_begin;
-	struct allocator_page_queue *queue_allocator = &(queues_allocator->queues[id]);
-    while(get_length_allocator(id) == 0) ;
-    prev_begin = atomic64_read(&queue_allocator->begin);
-    atomic64_set(&queue_allocator->begin, (prev_begin + 1) % ALLOCATE_BUFFER_SIZE);
-    while(atomic64_read(&queue_allocator->pages[prev_begin]) == 0) ;
-    ret = atomic64_read(&queue_allocator->pages[prev_begin]);
-    atomic64_set(&queue_allocator->pages[prev_begin], 0);
-    //pr_info("pop_queue_allocator success.\n");
+    struct allocator_page_queue *q = &(queues_allocator->queues[id]);
+	spin_lock(&q->q_lock);
+	if(q->num == 0) {
+		refill_allocator(q->pages);
+		q->begin = 1;
+		q->end = REFILL_BATCH_SIZE-1;
+		q->num = REFILL_BATCH_SIZE-1;
+		ret = q->pages[0];
+	} else {
+		ret = q->pages[q->begin];
+		q->begin = (q->begin + 1) % ALLOCATE_BUFFER_SIZE;
+		q->num -= 1;
+	}
+	spin_unlock(&q->q_lock);
     return ret;
 }
-EXPORT_SYMBOL(pop_queue_allocator);
 
-/*
-uint64_t pop_queue_reclaim_allocator(uint32_t id) {
-    uint64_t ret = 0;
-    uint64_t prev_begin;
-	struct reclaim_allocator_page_queue *queue_allocator = &(queues_allocator->reclaim_queues[id]);
-    while(get_length_reclaim_allocator(id) == 0) ;
-    prev_begin = atomic64_read(&queue_allocator->begin);
-    atomic64_set(&queue_allocator->begin, (prev_begin + 1) % RECLAIM_ALLOCATE_BUFFER_SIZE);
-    while(atomic64_read(&queue_allocator->pages[prev_begin]) == 0) ;
-    ret = atomic64_read(&queue_allocator->pages[prev_begin]);
-    atomic64_set(&queue_allocator->pages[prev_begin], 0);
-    //pr_info("pop_queue_allocator success.\n");
-    return ret;
-}
-EXPORT_SYMBOL(pop_queue_reclaim_allocator);*/
 
-int push_queue_allocator(uint64_t page_addr, uint32_t id) {
-    struct allocator_page_queue *queue_allocator = &(queues_allocator->queues[id]);
-    uint64_t prev_end = atomic64_read(&queue_allocator->end);
-
-    while (get_length_allocator(id) >= ALLOCATE_BUFFER_SIZE - 1);
-    atomic64_set(&queue_allocator->end, (prev_end + 1) % ALLOCATE_BUFFER_SIZE);
-    atomic64_set(&queue_allocator->pages[prev_end], page_addr);
-
+int push_queue_allocator(uint64_t offset, uint32_t id) {
+    struct allocator_page_queue *q = &(queues_allocator->queues[id]);
+	spin_lock(&q->q_lock);
+    if(q->num == ALLOCATE_BUFFER_SIZE) {
+		release_allocator(q->pages);
+		q->begin = REFILL_BATCH_SIZE;
+		q->end = 1;
+		q->pages[0] = offset;
+		q->num = REFILL_BATCH_SIZE+1;
+	} else {
+		q->pages[q->end] = offset;
+		q->end = (q->end + 1) % ALLOCATE_BUFFER_SIZE;
+		q->num += 1;
+	}
+	spin_unlock(&q->q_lock);
     return 0;
 }
-EXPORT_SYMBOL(push_queue_allocator);
-
-/*
-int push_queue_reclaim_allocator(uint64_t page_addr, uint32_t id) {
-    struct reclaim_allocator_page_queue *queue_allocator = &(queues_allocator->reclaim_queues[id]);
-    uint64_t prev_end = atomic64_read(&queue_allocator->end);;
-
-    while (get_length_reclaim_allocator(id) >= RECLAIM_ALLOCATE_BUFFER_SIZE - 1);
-    atomic64_set(&queue_allocator->end, (prev_end + 1) % RECLAIM_ALLOCATE_BUFFER_SIZE);
-    atomic64_set(&queue_allocator->pages[prev_end], page_addr);
-
-    return 0;
-}
-EXPORT_SYMBOL(push_queue_reclaim_allocator);*/
-
-uint64_t get_length_deallocator(uint32_t id) {
-	struct deallocator_page_queue *queue_deallocator = &queues_deallocator->queues[id];
-    uint64_t begin = atomic64_read(&queue_deallocator->begin);
-    uint64_t end = atomic64_read(&queue_deallocator->end);
-    if (begin == end) {
-        return 0;
-    }
-    if (end > begin) {
-        return (end - begin);
-    } else {
-        return (DEALLOCATE_BUFFER_SIZE - begin + end);
-    }
-}
-EXPORT_SYMBOL(get_length_deallocator);
-
-
-int push_queue_deallocator(uint64_t page_addr, uint32_t id) {
-	struct deallocator_page_queue *queue_deallocator = &(queues_deallocator->queues[id]);
-    int ret = 0;
-    uint64_t prev_end = atomic64_read(&queue_deallocator->end);
-    while(get_length_deallocator(id) >= DEALLOCATE_BUFFER_SIZE - 1) ;
-    atomic64_set(&queue_deallocator->end, (prev_end + 1) % DEALLOCATE_BUFFER_SIZE);
-    atomic64_set(&queue_deallocator->pages[prev_end], page_addr);
-    return ret;
-}
-EXPORT_SYMBOL(push_queue_deallocator);
-
-uint64_t pop_queue_deallocator(uint32_t id) {
-	uint64_t ret = 0;
-    uint64_t prev_begin;
-	struct deallocator_page_queue *queue_deallocator = &(queues_deallocator->queues[id]);
-    while(get_length_deallocator(id) == 0) ;
-    prev_begin = atomic64_read(&queue_deallocator->begin);
-    atomic64_set(&queue_deallocator->begin, (prev_begin + 1) % DEALLOCATE_BUFFER_SIZE);
-    while(atomic64_read(&queue_deallocator->pages[prev_begin]) == 0) ;
-    ret = atomic64_read(&queue_deallocator->pages[prev_begin]);
-    atomic64_set(&queue_deallocator->pages[prev_begin], 0);
-    //pr_info("pop_queue_allocator success.\n");
-    return ret;
-}
-EXPORT_SYMBOL(pop_queue_deallocator);
