@@ -246,7 +246,7 @@ struct free_idx_queue {
     int end;
     int num;
 	int capacity;
-    uint64_t pages*;
+    uint64_t *pages;
     spinlock_t lock;
 };
 
