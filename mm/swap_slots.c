@@ -308,6 +308,9 @@ swp_entry_t get_swap_page(struct page *page)
 {
 	swp_entry_t entry;
 	struct swap_slots_cache *cache;
+	if(likely(direct_swap_enabled() && direct_swap_alloc_remote_page(&entry))) {
+		goto out;
+	}
 
 	entry.val = 0;
 

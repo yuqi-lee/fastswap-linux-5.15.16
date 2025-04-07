@@ -725,20 +725,9 @@ static void set_direct_swap_partition(struct swap_info_struct *p)
 	int id = (int)p->type;
 	__partition_is_direct_swap[id] = true;
 	if(num_current_direct_swap_partition == 0) {
-		for(i = 0;i < 64; ++i) {
+		for(i = 0;i < NUM_KFIFOS_ALLOC; ++i) {
 			core_id_to_swap_type[i] = id;
 		}
-		p->fq = (struct free_idx_queue *)vzalloc(sizeof(struct free_idx_queue));
-		p->fq->capacity = p->pages;
-		p->fq->pages = (uint64_t *)vzalloc(sizeof(uint64_t) * p->pages);
-		for(i = 0;i < p->pages; ++i) {
-			p->fq->pages[i] = p->pages - 1 - i;
-		}
-		p->fq->begin = 0;
-		p->fq->end = 0;
-		p->fq->num = p->fq->capacity;
-		global_fq = p->fq;
-		spin_lock_init(&global_fq->lock);
 	} 
 	num_current_direct_swap_partition++;
 	pr_info("Register a directswap partition with id = %d", id);
@@ -748,7 +737,6 @@ static void swap_range_free(struct swap_info_struct *si, unsigned long offset,
 			    unsigned int nr_entries)
 {
 	unsigned long begin = offset;
-	unsigned long offset_direct_swap = offset;
 	unsigned long end = offset + nr_entries - 1;
 	void (*swap_slot_free_notify)(struct block_device *, unsigned long);
 	bool is_direct_swap = direct_swap_enabled() && is_direct_swap_area(si->type);

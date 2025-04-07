@@ -241,15 +241,6 @@ struct swap_cluster_list {
 	struct swap_cluster_info tail;
 };
 
-struct free_idx_queue {
-    int begin;
-    int end;
-    int num;
-	int capacity;
-    uint64_t *pages;
-    spinlock_t lock;
-};
-
 
 
 /*
@@ -278,7 +269,6 @@ struct swap_info_struct {
 	struct file *swap_file;		/* seldom referenced */
 	unsigned int old_block_size;	/* seldom referenced */
 	struct completion comp;		/* seldom referenced */
-	struct free_idx_queue *fq;
 #ifdef CONFIG_FRONTSWAP
 	unsigned long *frontswap_map;	/* frontswap in-use, one bit per page */
 	atomic_t frontswap_pages;	/* frontswap pages in-use counter */

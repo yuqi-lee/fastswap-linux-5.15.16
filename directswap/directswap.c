@@ -17,6 +17,8 @@
 
 #include <asm/barrier.h>
 
+atomic64_t fail_count = ATOMIC64_INIT(0);
+bool flag = false;
 
 bool __direct_swap_enabled = false;
 EXPORT_SYMBOL(__direct_swap_enabled);
@@ -42,10 +44,6 @@ static int setup_swap_map_and_extents(struct swap_info_struct *p,
 static void inc_cluster_info_page(struct swap_info_struct *p,
 	struct swap_cluster_info *cluster_info, unsigned long page_nr);
 
-const uint64_t base_addr = ((uint64_t)1 << SWAP_AREA_SHIFT);
-
-atomic_t num_kfifos_free_fail = ATOMIC_INIT(0);
-EXPORT_SYMBOL(num_kfifos_free_fail);
 
 struct allocator_page_queues *queues_allocator = NULL;
 EXPORT_SYMBOL(queues_allocator);
@@ -53,41 +51,36 @@ EXPORT_SYMBOL(queues_allocator);
 struct free_idx_queue *global_fq = NULL;
 EXPORT_SYMBOL(global_fq);
 
-pgoff_t raddr2offset(uint64_t raddr) {
-  return (raddr & (((uint64_t)1 << SWAP_AREA_SHIFT) - 1)) >> PAGE_SHIFT;
-}
-EXPORT_SYMBOL(raddr2offset);
-
-uint64_t offset2raddr(pgoff_t offset) {
-  return (offset << PAGE_SHIFT) + base_addr;
-}
-EXPORT_SYMBOL(offset2raddr);
-
 
 
 SYSCALL_DEFINE1(set_direct_swap_enabled, const char __user *, specialfile)
 {
-	int i, j;
+	int i;
 	struct allocator_page_queue *q;
 	for(i = 0;i < MAX_SWAPFILES; ++i) {
 		__partition_is_direct_swap[i] = false;
 	}
-	//__partition_is_direct_swap[MAX_SWAPFILES] = true;
+
+	global_fq = (struct free_idx_queue *)vzalloc(sizeof(struct free_idx_queue));
+	global_fq->capacity = TOTAL_PAGES - 11;
+	for(i = 0;i < global_fq->capacity; ++i) {
+		global_fq->pages[i] = i + 1;
+	}
+	global_fq->begin = 0;
+	global_fq->end = 0;
+	global_fq->num = global_fq->capacity;
+	spin_lock_init(&global_fq->lock);
+
 	queues_allocator = (struct allocator_page_queues *)vzalloc(sizeof(struct allocator_page_queues));
 	for(i = 0;i < NUM_KFIFOS_ALLOC; ++i) {
     	q = &queues_allocator->queues[i];
     	q->num = q->begin = q->end = 0;
 		spin_lock_init(&q->q_lock);
   	}
-
-
-
- 	__direct_swap_enabled = 1;
+	
+ 	__direct_swap_enabled = true;
     printk("DirectSwap enabled successfully.");
  	return 0;
-
-bad_set:
-	return -1;
 }
 
 SYSCALL_DEFINE1(set_direct_swap_disabled, const char __user *, specialfile)
@@ -103,18 +96,39 @@ static inline void direct_swap_range_alloc(struct swap_info_struct *si, unsigned
 	si->inuse_pages += nr_entries;
 }
 
+bool direct_swap_alloc_remote_page(swp_entry_t *e) {
+	uint32_t nproc = raw_smp_processor_id();
+	uint64_t offset;
+	int type;
+
+repeat:
+	offset = pop_queue_allocator(nproc);
+	type = core_id_to_swap_type[nproc];
+	*e = swp_entry(type, offset);
+
+	if(READ_ONCE(swap_info[type]->swap_map[offset])) {
+		uint64_t count = atomic64_read(&fail_count);
+		if(count % 1000 == 0) {
+			pr_info("bad pop allocator... offset = %d", (int)offset);
+		}
+		atomic64_inc(&fail_count);
+		goto repeat;
+	}
+
+	WRITE_ONCE(swap_info[type]->swap_map[offset], SWAP_HAS_CACHE);
+	direct_swap_range_alloc(swap_info[type], 1);
+	
+	return true;
+}
+
 int direct_swap_alloc_remote_pages(int n_goal, unsigned long entry_size, swp_entry_t swp_entries[]) {
 	uint32_t nproc = raw_smp_processor_id();
 	int count, type;
 	uint64_t offset;
 	struct swap_info_struct *si = NULL;
-	uint32_t idx;
-	uint64_t remote_addr;
 
-	count = 0;
-	
 	/*Normal path*/
-	for(; count < n_goal ; count++) {
+	for(count = 0; count < n_goal ; count++) {
 		offset = pop_queue_allocator(nproc);
 		/* Update corresponding swap_map entry*/
 		type = core_id_to_swap_type[nproc];
@@ -125,6 +139,14 @@ int direct_swap_alloc_remote_pages(int n_goal, unsigned long entry_size, swp_ent
 			printk(KERN_ERR "[DirectSwap]: Invalid remote entry with type = %d.\n", type);
 			break;
 		}
+		if(READ_ONCE(si->swap_map[offset])) {
+			count--;
+			if(unlikely(!flag)) {
+				pr_info("offset = %d error.", (int)offset);
+				flag = true;
+			}
+			continue;
+		}
 		WRITE_ONCE(si->swap_map[offset], SWAP_HAS_CACHE);
 		direct_swap_range_alloc(si, 1);
 	}
@@ -134,16 +156,11 @@ int direct_swap_alloc_remote_pages(int n_goal, unsigned long entry_size, swp_ent
 
 int direct_swap_free_remote_page(swp_entry_t entry) {
 	uint32_t nproc = raw_smp_processor_id();
-	int type = swp_type(entry);
-	int count = 0;
+
 	uint64_t offset = swp_offset(entry);
 
-	if(!is_direct_swap_area(type)) {
-		return 1;
-	} else {
-		push_queue_allocator(offset, nproc);
-		return 0;
-	}
+	push_queue_allocator(offset, nproc);
+	return 0;
 }
 
 static struct swap_info_struct *alloc_swap_info_with_type(int type) {
@@ -273,8 +290,11 @@ bool refill_allocator(uint64_t *allocator) {
 	spin_lock(&global_fq->lock);
     if(global_fq->num < REFILL_BATCH_SIZE) {
 		pr_err("no free entries...");
+		return false;
 	}
-	first_chunk_size = min(REFILL_BATCH_SIZE, global_fq->capacity - global_fq->begin);
+
+	first_chunk_size = global_fq->capacity - global_fq->begin > REFILL_BATCH_SIZE ? REFILL_BATCH_SIZE : global_fq->capacity - global_fq->begin;
+
 	memcpy(allocator, global_fq->pages + global_fq->begin, first_chunk_size * sizeof(uint64_t));
 	if(unlikely(first_chunk_size < REFILL_BATCH_SIZE)) {
 		memcpy(allocator + first_chunk_size, global_fq->pages, (REFILL_BATCH_SIZE - first_chunk_size) * sizeof(uint64_t));
@@ -290,8 +310,9 @@ bool release_allocator(uint64_t *allocator) {
 	spin_lock(&global_fq->lock);
     if(global_fq->capacity - global_fq->num < REFILL_BATCH_SIZE) {
 		pr_err("no space to hold free entries...");
+		return false;
 	}
-	first_chunk_size = min(REFILL_BATCH_SIZE, global_fq->capacity - global_fq->end);
+	first_chunk_size =  global_fq->capacity - global_fq->end > REFILL_BATCH_SIZE ? REFILL_BATCH_SIZE : global_fq->capacity - global_fq->end;
 	memcpy(global_fq->pages + global_fq->end, allocator, first_chunk_size * sizeof(uint64_t));
 	if(unlikely(first_chunk_size < REFILL_BATCH_SIZE)) {
 		memcpy(global_fq->pages, allocator + first_chunk_size, (REFILL_BATCH_SIZE - first_chunk_size) * sizeof(uint64_t));
@@ -323,6 +344,8 @@ uint64_t pop_queue_allocator(uint32_t id) {
 
 
 int push_queue_allocator(uint64_t offset, uint32_t id) {
+	if(unlikely(offset == 0))
+		return 0;
     struct allocator_page_queue *q = &(queues_allocator->queues[id]);
 	spin_lock(&q->q_lock);
     if(q->num == ALLOCATE_BUFFER_SIZE) {
