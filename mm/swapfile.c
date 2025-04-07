@@ -924,24 +924,6 @@ checks:
 		goto checks;
 	}
 
-	/*
-	 * Even if there's no free clusters available (fragmented),
-	 * try to scan a little more quickly with lock held unless we
-	 * have scanned too many slots already.
-	 */
-	if (!scanned_many) {
-		unsigned long scan_limit;
-
-		if (offset < scan_base)
-			scan_limit = scan_base;
-		else
-			scan_limit = si->highest_bit;
-		for (; offset <= scan_limit && --latency_ration > 0;
-		     offset++) {
-			if (!si->swap_map[offset])
-				goto checks;
-		}
-	}
 
 done:
 	set_cluster_next(si, offset + 1);
