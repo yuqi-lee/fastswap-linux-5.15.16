@@ -318,41 +318,6 @@ swp_entry_t get_swap_page(struct page *page)
 		goto out;
 	}
 
-	if(likely(direct_swap_enabled())) {
- 		n_ret = direct_swap_alloc_remote_pages(1, 1, &entry);
- 		if(likely(n_ret)) {
- 			goto out;
- 		}
- 	}
-
-	/*
-	 * Preemption is allowed here, because we may sleep
-	 * in refill_swap_slots_cache().  But it is safe, because
-	 * accesses to the per-CPU data structure are protected by the
-	 * mutex cache->alloc_lock.
-	 *
-	 * The alloc path here does not touch cache->slots_ret
-	 * so cache->free_lock is not taken.
-	 */
-	cache = raw_cpu_ptr(&swp_slots);
-
-	if (check_cache_active() && cache->slots) {
-		mutex_lock(&cache->alloc_lock);
-		if (cache->slots) {
-repeat:
-			if (cache->nr) {
-				entry = cache->slots[cache->cur];
-				cache->slots[cache->cur++].val = 0;
-				cache->nr--;
-			} else if (refill_swap_slots_cache(cache)) {
-				goto repeat;
-			}
-		}
-		mutex_unlock(&cache->alloc_lock);
-		if (entry.val)
-			goto out;
-	}
-
 	get_swap_pages(1, &entry, 1);
 out:
 	if (mem_cgroup_try_charge_swap(page, entry)) {
