@@ -272,9 +272,9 @@ static int refill_swap_slots_cache(struct swap_slots_cache *cache)
 int free_swap_slot(swp_entry_t entry)
 {
 	struct swap_slots_cache *cache;
-	if(direct_swap_enabled() && is_direct_swap_area(swp_type(entry))) {
-		goto direct_free;
-	}
+	//if(direct_swap_enabled() && is_direct_swap_area(swp_type(entry))) {
+	//	goto direct_free;
+	//}
 
 	cache = raw_cpu_ptr(&swp_slots);
 	if (likely(use_swap_slot_cache && cache->slots_ret)) {
@@ -308,6 +308,7 @@ swp_entry_t get_swap_page(struct page *page)
 {
 	swp_entry_t entry;
 	struct swap_slots_cache *cache;
+	int n_ret;
 
 	entry.val = 0;
 
@@ -316,6 +317,13 @@ swp_entry_t get_swap_page(struct page *page)
 			get_swap_pages(1, &entry, HPAGE_PMD_NR);
 		goto out;
 	}
+
+	if(likely(direct_swap_enabled())) {
+ 		n_ret = direct_swap_alloc_remote_pages(1, 1, &entry);
+ 		if(likely(n_ret)) {
+ 			goto out;
+ 		}
+ 	}
 
 	/*
 	 * Preemption is allowed here, because we may sleep
@@ -328,7 +336,7 @@ swp_entry_t get_swap_page(struct page *page)
 	 */
 	cache = raw_cpu_ptr(&swp_slots);
 
-	if (false/*unlikely(!direct_swap_enabled() && check_cache_active() && cache->slots)*/) {
+	if (check_cache_active() && cache->slots) {
 		mutex_lock(&cache->alloc_lock);
 		if (cache->slots) {
 repeat:

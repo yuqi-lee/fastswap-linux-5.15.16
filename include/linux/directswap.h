@@ -29,8 +29,8 @@
 #define RECLAIM_ALLOCATE_BUFFER_SIZE (16 << 10) // 64 MB
 #define DEALLOCATE_BUFFER_SIZE (16 << 10) // 64 MB
 #define SWAP_AREA_SHIFT 35
-#define NUM_KFIFOS_ALLOC 64
-#define NUM_KFIFOS_FREE 64
+#define NUM_KFIFOS_ALLOC 128
+#define NUM_KFIFOS_FREE 128
 
 /* Defined in directswap/directswap.c */
 extern bool __direct_swap_enabled;

@@ -725,7 +725,7 @@ static void set_direct_swap_partition(struct swap_info_struct *p)
 	int id = (int)p->type;
 	__partition_is_direct_swap[id] = true;
 	if(num_current_direct_swap_partition == 0) {
-		for(i = 0;i < 4; ++i) {
+		for(i = 0;i < NUM_KFIFOS_ALLOC; ++i) {
 			core_id_to_swap_type[i] = id;
 		}
 	} else if(num_current_direct_swap_partition == 1) {
@@ -1368,12 +1368,12 @@ static void swap_entry_free(struct swap_info_struct *p, swp_entry_t entry)
 	unsigned long offset = swp_offset(entry);
 	unsigned char count;
 
-	ci = lock_cluster(p, offset);
+	//ci = lock_cluster(p, offset);
 	count = p->swap_map[offset];
 	VM_BUG_ON(count != SWAP_HAS_CACHE);
 	p->swap_map[offset] = 0;
-	dec_cluster_info_page(p, p->cluster_info, offset);
-	unlock_cluster(ci);
+	//dec_cluster_info_page(p, p->cluster_info, offset);
+	//unlock_cluster(ci);
 
 	mem_cgroup_uncharge_swap(entry, 1);
 	swap_range_free(p, offset, 1);
@@ -1484,16 +1484,17 @@ void swapcache_free_entries(swp_entry_t *entries, int n)
 	 * nr_swapfiles isn't absolutely correct, but the overhead of sort() is
 	 * so low that it isn't necessary to optimize further.
 	 */
-	if (nr_swapfiles > 1)
-		sort(entries, n, sizeof(entries[0]), swp_entry_cmp, NULL);
+	//if (nr_swapfiles > 1)
+	//	sort(entries, n, sizeof(entries[0]), swp_entry_cmp, NULL);
 	for (i = 0; i < n; ++i) {
-		p = swap_info_get_cont(entries[i], prev);
+		//p = swap_info_get_cont(entries[i], prev);
+		p = swp_swap_info(entries[i]);
 		if (p)
 			swap_entry_free(p, entries[i]);
-		prev = p;
+		//prev = p;
 	}
-	if (p)
-		spin_unlock(&p->lock);
+	//if (p)
+	//	spin_unlock(&p->lock);
 }
 
 /*

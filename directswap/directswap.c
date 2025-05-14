@@ -245,15 +245,15 @@ SYSCALL_DEFINE1(set_direct_swap_enabled, const char __user *, specialfile)
 	unsigned char *swap_map = NULL;
 	int maxpages = NUM_PAGES_PER_REMOTE_SWAP_AREA;*/
 
-	//allocator_page_queue_init();
-	//deallocator_page_queue_init();
+	allocator_page_queue_init();
+	deallocator_page_queue_init();
 	int i;
 	for(i = 0;i < MAX_SWAPFILES; ++i) {
 		__partition_is_direct_swap[i] = false;
 	}
 	//__partition_is_direct_swap[MAX_SWAPFILES] = true;
-	allocator_page_queue_init_dram();
-	deallocator_page_queue_init_dram();
+	//allocator_page_queue_init_dram();
+	//deallocator_page_queue_init_dram();
 
 
 	/*
